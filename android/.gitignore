@@ -1,0 +1,23 @@
+# Flutter
+.dart_tool/
+build/
+.packages
+.pub/
+
+# FVM
+.fvm/
+
+# Android
+android/.gradle/
+android/local.properties
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store

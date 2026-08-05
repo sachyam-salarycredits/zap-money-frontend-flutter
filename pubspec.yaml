@@ -1,0 +1,96 @@
+name: zap_money
+description: ZapMoney Flutter client (migrated from React Native master).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_riverpod: ^2.6.1
+  dio: ^5.8.0+1
+  go_router: ^15.1.2
+  flutter_secure_storage: ^9.2.4
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+  intl: ^0.20.2
+  lottie: ^3.3.1
+  local_auth: ^2.3.0
+  device_info_plus: ^11.4.0
+  package_info_plus: ^8.3.0
+  shared_preferences: ^2.5.3
+  uuid: ^4.5.1
+  jwt_decoder: ^2.0.1
+  collection: ^1.19.1
+  url_launcher: ^6.3.1
+  permission_handler: ^12.0.0+1
+  geolocator: ^14.0.1
+  webview_flutter: ^4.11.0
+  path_provider: ^2.1.5
+  image_picker: ^1.2.3
+  # Pin <11 — 11.x broke Android FilePickerPlugin registration in this project.
+  file_picker: 8.3.7
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  share_plus: ^12.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  freezed: ^3.0.0
+  json_serializable: ^6.9.5
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Prefer explicit files — do NOT glob assets/lottie/ (100MB+ unused JSON).
+    - assets/images/Onboard/
+    - assets/images/Login/
+    - assets/images/Profession/
+    - assets/images/Permission/
+    - assets/images/tabs/
+    - assets/images/profile/
+    - assets/images/loans/
+    - assets/images/personalInfo/
+    - assets/images/face-id.png
+    - assets/images/backicon.png
+    - assets/images/logo.png
+    - assets/images/pan.png
+    - assets/images/bankdoc.png
+    - assets/images/splash/splash.png
+    - assets/lottie/splash_screen.json
+    - assets/lottie/splash.json
+  fonts:
+    - family: DigretoNeue
+      fonts:
+        - asset: assets/fonts/Digreto Neue.ttf
+          weight: 400
+        - asset: assets/fonts/Digreto Neue-Italic.ttf
+          weight: 400
+          style: italic
+        - asset: assets/fonts/Digreto Neue-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Digreto Neue-LightItalic.ttf
+          weight: 300
+          style: italic
+        - asset: assets/fonts/Digreto Neue-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Digreto Neue-MediumItalic.ttf
+          weight: 500
+          style: italic
+        - asset: assets/fonts/Digreto Neue-Semibold.ttf
+          weight: 600
+        - asset: assets/fonts/Digreto Neue-SemiboldItalic.ttf
+          weight: 600
+          style: italic
+        - asset: assets/fonts/Digreto Neue-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Digreto Neue-BoldItalic.ttf
+          weight: 700
+          style: italic
