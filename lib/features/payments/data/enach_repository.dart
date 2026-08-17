@@ -32,7 +32,9 @@ class EnachRepository {
 
   static double? _positiveAmount(dynamic value) {
     if (value == null) return null;
-    final n = value is num ? value.toDouble() : double.tryParse(value.toString());
+    final n = value is num
+        ? value.toDouble()
+        : double.tryParse(value.toString());
     if (n == null || n <= 0) return null;
     return n;
   }
@@ -59,36 +61,36 @@ class EnachRepository {
   }
 
   /// Cashfree reads `Bank_Account_Information.Enach_Amount`. StoreBankInfo
-  /// overwrites that field with `request.data.enach_amount` (null if omitted),
-  /// which wipes a previously set amount. Restore from home NACH when missing.
+  /// overwrites that field with `request.data.enach_amount`. Always prefer the
+  /// latest contract's NACH amount: a repeat loan can have a different EMI and
+  /// must not reuse the previous contract's mandate ceiling.
   Future<Map<String, dynamic>?> ensureEnachAmountOnBank({
     Map<String, dynamic>? enachInfo,
   }) async {
     final bank = await getBankAccountInformation();
     final existing = _positiveAmount(bank?['enach_amount']);
-    if (existing != null) {
-      return {
-        ...?bank,
-        'enach_amount': existing.toString(),
-      };
+    double? fromContract;
+    try {
+      fromContract = await _nachAmountFromHome();
+    } catch (_) {
+      // Fall back to the values already returned by the eNACH/bank APIs.
     }
-
     final fromEnach = _positiveAmount(enachInfo?['enach_amount']);
-    double? amount = fromEnach;
-
-    if (amount == null) {
-      amount = await _nachAmountFromHome();
-    }
+    final amount = fromContract ?? fromEnach ?? existing;
 
     if (amount == null) {
       return bank;
     }
 
+    if (existing != null && (existing - amount).abs() < 0.01) {
+      return {...?bank, 'enach_amount': amount.toString()};
+    }
+
     final name = (bank?['customer_name'] ?? enachInfo?['customer_name'])
         ?.toString();
-    final account = (bank?['bank_account_number'] ??
-            enachInfo?['bank_account_number'])
-        ?.toString();
+    final account =
+        (bank?['bank_account_number'] ?? enachInfo?['bank_account_number'])
+            ?.toString();
     final ifsc = (bank?['ifsc_code'] ?? enachInfo?['ifsc_code'])?.toString();
     final bankName = bank?['bank_name']?.toString() ?? '';
     final branch = bank?['branch_name']?.toString() ?? '';
@@ -100,10 +102,7 @@ class EnachRepository {
         ifsc == null ||
         ifsc.isEmpty ||
         customerId == null) {
-      return {
-        ...?bank,
-        'enach_amount': amount.toString(),
-      };
+      return {...?bank, 'enach_amount': amount.toString()};
     }
 
     try {
@@ -150,12 +149,9 @@ class EnachRepository {
     final data = res.data;
     if (data is! Map) return null;
     final home = HomeSnapshot.fromJson(
-      data is Map<String, dynamic>
-          ? data
-          : Map<String, dynamic>.from(data),
+      data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data),
     );
-    return _positiveAmount(home.nachAmount) ??
-        _positiveAmount(home.emiAmount);
+    return _positiveAmount(home.nachAmount) ?? _positiveAmount(home.emiAmount);
   }
 
   Future<bool> isUpiEnabled() async {
@@ -178,10 +174,7 @@ class EnachRepository {
     final customerId = await _customerIdPayload();
     await _dio.post(
       ApiEndpoints.storeEmiInformation,
-      data: {
-        'customer_id': customerId,
-        'customer_emi_date': emiDay,
-      },
+      data: {'customer_id': customerId, 'customer_emi_date': emiDay},
       options: Options(contentType: Headers.jsonContentType),
     );
   }
@@ -219,11 +212,7 @@ class EnachRepository {
     final customerId = await _customerIdPayload();
     final res = await _dio.post(
       ApiEndpoints.validateVpa,
-      data: {
-        'cid': customerId,
-        'payerVirAddr': vpa,
-        'contract_id': contractId,
-      },
+      data: {'cid': customerId, 'payerVirAddr': vpa, 'contract_id': contractId},
       options: Options(contentType: Headers.jsonContentType),
     );
     return _asMap(res.data);

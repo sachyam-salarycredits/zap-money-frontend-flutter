@@ -143,17 +143,22 @@ class ProfileRepository {
 
     final url = (root['PublicURL'] ?? root['DownloadURL'] ?? root['public_url'])
         ?.toString();
-    if (url != null && url.isNotEmpty) {
+    final loanAmt = root['loanAmt'] ?? root['amount'];
+    final hasLoanMeta = loanAmt != null ||
+        (root['lai'] != null && root['lai'].toString().isNotEmpty);
+    if ((url != null && url.isNotEmpty) || hasLoanMeta) {
       return [
         {
           'DocumentName': root['DocumentName'] ?? 'Loan Contract',
           'PublicURL': url,
           'DownloadURL': root['DownloadURL'] ?? url,
           'disbursement': {
-            'loanAmt': root['loanAmt'] ?? root['amount'],
+            'loanAmt': loanAmt,
             'dt': root['dt'] ?? root['date'],
           },
           'lai': root['lai'] ?? root['contractId'],
+          'offeredLoanAmt': loanAmt,
+          'dt': root['dt'] ?? root['date'],
         },
       ];
     }

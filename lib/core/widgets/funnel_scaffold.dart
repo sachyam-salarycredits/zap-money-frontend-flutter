@@ -41,19 +41,23 @@ class FunnelScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showTopBar =
+        showBack || showHelp || (totalSteps != null && activeStep != null);
+
     return Scaffold(
       backgroundColor: AppColors.deepPurple,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _TopBar(
-              showBack: showBack,
-              showHelp: showHelp,
-              onBack: onBack,
-              totalSteps: totalSteps,
-              activeStep: activeStep,
-            ),
+            if (showTopBar)
+              _TopBar(
+                showBack: showBack,
+                showHelp: showHelp,
+                onBack: onBack,
+                totalSteps: totalSteps,
+                activeStep: activeStep,
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 16, 8),
               child: Row(
@@ -92,9 +96,10 @@ class FunnelScaffold extends StatelessWidget {
                   ? Container(
                       width: double.infinity,
                       decoration: const BoxDecoration(
-                        color: Color(0xFF2A0A5C),
+                        // RN profession sheet: rgba(35, 2, 97, 0.8)
+                        color: Color(0xCC230261),
                         borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(28)),
+                            BorderRadius.vertical(top: Radius.circular(25)),
                       ),
                       child: child,
                     )

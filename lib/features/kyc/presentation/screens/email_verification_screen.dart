@@ -56,6 +56,13 @@ class _EmailVerificationScreenState
               'Verification link sent. Open it from your inbox (or check backend mock logs), then return to Home.';
         });
       }
+    } on EmailVerificationException catch (error) {
+      if (mounted) {
+        setState(() => _message = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.message)),
+        );
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

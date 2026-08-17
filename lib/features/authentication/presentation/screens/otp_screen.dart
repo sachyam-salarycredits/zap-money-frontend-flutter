@@ -151,87 +151,109 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
               children: [
                 const AuthHeroHeader(),
                 AuthCard(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        IconButton(
-                          onPressed: () => context.pop(),
-                          icon: Image.asset(
-                            'assets/images/backicon.png',
-                            height: 15,
-                            width: 15,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.arrow_back, color: Colors.white),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
                           ),
-                        ),
-                        Text(
-                          'OTP Verification',
-                          style: AppTypography.headline(size: 22),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'An OTP verification code will be sent to\n+91 ${widget.mobileNumber}',
-                          style: AppTypography.body(size: 13, color: AppColors.muted),
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: List.generate(6, (i) {
-                            return SizedBox(
-                              width: 42,
-                              child: TextField(
-                                controller: _digits[i],
-                                focusNode: _nodes[i],
-                                textAlign: TextAlign.center,
-                                keyboardType: TextInputType.number,
-                                maxLength: 1,
-                                style: AppTypography.headline(size: 20),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
-                                decoration: InputDecoration(
-                                  counterText: '',
-                                  enabledBorder: UnderlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: _invalid
-                                          ? Colors.redAccent
-                                          : Colors.white54,
+                          child: IntrinsicHeight(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                IconButton(
+                                  onPressed: () => context.pop(),
+                                  icon: Image.asset(
+                                    'assets/images/backicon.png',
+                                    height: 15,
+                                    width: 15,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(
+                                      Icons.arrow_back,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
-                                onChanged: (v) => _onDigit(i, v),
-                              ),
-                            );
-                          }),
-                        ),
-                        const SizedBox(height: 16),
-                        Center(
-                          child: Text(
-                            _timerText,
-                            style: AppTypography.body(size: 14),
-                          ),
-                        ),
-                        if (_seconds == 0)
-                          TextButton(
-                            onPressed: _resend,
-                            child: Text(
-                              'Resend OTP',
-                              style: AppTypography.body(
-                                size: 14,
-                                color: AppColors.accentMint,
-                              ),
+                                Text(
+                                  'OTP Verification',
+                                  style: AppTypography.headline(size: 22),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'An OTP verification code will be sent to\n+91 ${widget.mobileNumber}',
+                                  style: AppTypography.body(
+                                    size: 13,
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: List.generate(6, (i) {
+                                    return SizedBox(
+                                      width: 42,
+                                      child: TextField(
+                                        controller: _digits[i],
+                                        focusNode: _nodes[i],
+                                        textAlign: TextAlign.center,
+                                        keyboardType: TextInputType.number,
+                                        maxLength: 1,
+                                        style:
+                                            AppTypography.headline(size: 20),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter
+                                              .digitsOnly,
+                                        ],
+                                        decoration: InputDecoration(
+                                          counterText: '',
+                                          enabledBorder: UnderlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: _invalid
+                                                  ? Colors.redAccent
+                                                  : Colors.white54,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (v) => _onDigit(i, v),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                                const SizedBox(height: 16),
+                                Center(
+                                  child: Text(
+                                    _timerText,
+                                    style: AppTypography.body(size: 14),
+                                  ),
+                                ),
+                                if (_seconds == 0)
+                                  TextButton(
+                                    onPressed: _resend,
+                                    child: Text(
+                                      'Resend OTP',
+                                      style: AppTypography.body(
+                                        size: 14,
+                                        color: AppColors.accentMint,
+                                      ),
+                                    ),
+                                  ),
+                                const Spacer(),
+                                ZapSubmitButton(
+                                  title: 'Verify',
+                                  disabled: _otp.length < 6 || loading,
+                                  onPressed: () => _verify(_otp),
+                                ),
+                              ],
                             ),
                           ),
-                        const Spacer(),
-                        ZapSubmitButton(
-                          title: 'Verify',
-                          disabled: _otp.length < 6 || loading,
-                          onPressed: () => _verify(_otp),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],

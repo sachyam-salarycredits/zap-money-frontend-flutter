@@ -48,6 +48,9 @@ class ApiEndpoints {
   static String get pullCreditBureau => '$url/pullCreditBureau';
   static String get validatescore => '$url/validatescore';
   static String get pullEquifaxProfile => '$url/pullEquifaxProfile';
+  static String get getBureauConsentStatus => '$url/getBureauConsentStatus';
+  static String get sendBureauConsentOtp => '$url/sendBureauConsentOtp';
+  static String get verifyBureauConsentOtp => '$url/verifyBureauConsentOtp';
   static String get storeBankInfo => '$url/StoreBankInfo';
   static String get getBankAccountInformation => '$url/GetBankAccountInformation';
   static String get getIfscInfo => '$url/getbankaccountinfo/';
@@ -78,6 +81,7 @@ class ApiEndpoints {
   static String get digilockerStatus => '$url/digilockerStatus';
   static String get digilockerComplete => '$url/digilockerComplete';
   static String get uploadDkycResponse => '$url/dkycFrontendResponse';
+  static String get esignStatus => '$url/EsignStatus';
 
   // eNACH / UPI mandate
   static String get getEnachInformation => '$url/GetENACHInformation';

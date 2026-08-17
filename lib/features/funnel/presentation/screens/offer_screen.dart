@@ -60,8 +60,9 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
     });
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         setState(() {
           _loadingOffer = false;
@@ -70,7 +71,10 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
         return;
       }
 
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getCreditDecisionInformation,
             data: {'customer_id': customerId},
             options: Options(contentType: Headers.jsonContentType),
@@ -94,8 +98,10 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       final minAmt = asDouble(row['min_loan_amount'], 1000);
       final maxAmt = asDouble(row['max_loan_amount'], minAmt);
       var minTerm = asDouble(row['min_term'], 1).round().clamp(1, 60);
-      var maxTerm =
-          asDouble(row['max_term'], minTerm.toDouble()).round().clamp(minTerm, 60);
+      var maxTerm = asDouble(
+        row['max_term'],
+        minTerm.toDouble(),
+      ).round().clamp(minTerm, 60);
       // Unlocked offers historically shipped with max_term=3 (NTC default).
       // Product tenure for larger / unlocked amounts is up to 12 months.
       if (maxAmt > 3000 && maxTerm < 12) {
@@ -103,7 +109,8 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
         if (minTerm > maxTerm) minTerm = 1;
       }
       final rate = asDouble(row['interest_rate']);
-      final pricingId = row['customer_pricing_id']?.toString() ??
+      final pricingId =
+          row['customer_pricing_id']?.toString() ??
           row['record_id']?.toString() ??
           '';
 
@@ -150,13 +157,12 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
     if (amount <= 0 || term <= 0) return;
 
     try {
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.calculateEmi,
-            data: {
-              'tenor': term,
-              'loan_amount': amount,
-              'roi': roi,
-            },
+            data: {'tenor': term, 'loan_amount': amount, 'roi': roi},
             options: Options(contentType: Headers.jsonContentType),
           );
       final data = response.data;
@@ -238,15 +244,21 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
       final userType =
           (await storage.read(StorageKeys.userType))?.replaceAll('"', '') ?? '';
-      final deviceImei = await ref.read(deviceIdServiceProvider).getHardwareImei();
+      final deviceImei = await ref
+          .read(deviceIdServiceProvider)
+          .getHardwareImei();
       final loc = await _location();
 
       // RN newOfferDetailsPl → StoreFinalOfferSelection
-      await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.storeFinalOfferSelection,
             data: {
               'offer_id': _offerId,
@@ -263,6 +275,27 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
             options: Options(contentType: Headers.jsonContentType),
           );
 
+      // API rejects with HTTP 200 + {status: 403, msg: ...}. Marking the offer
+      // stage complete here would strand the customer on a loan that was never
+      // created, so surface the message and stay put.
+      final body = response.data;
+      final status = body is Map ? body['status'] : null;
+      if (status == 403 ||
+          status == '403' ||
+          (body is Map && body['error'] != null)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                (body is Map ? body['msg']?.toString() : null) ??
+                    'Could not accept offer',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       if (userType.toLowerCase() == 'student') {
         await ref.read(screenStatusServiceProvider).completePl();
       } else {
@@ -271,7 +304,18 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
 
       if (!mounted) return;
       ref.read(homeRefreshTickProvider.notifier).state++;
-      context.go(AppRoutes.home);
+
+      // A new contract always needs a mandate sized for its selected EMI.
+      // Reuse KYC only when the closure reset retained a still-valid KYC flag.
+      var kycValid = false;
+      try {
+        final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
+        kycValid = bundle.flags.ocr || bundle.flags.vkyc;
+      } catch (_) {
+        // Fail closed: KYC can be completed again if freshness is unknown.
+      }
+      if (!mounted) return;
+      context.go(kycValid ? AppRoutes.enach : AppRoutes.dkyc);
     } on DioException catch (e) {
       final data = e.response?.data;
       final msg = data is Map
@@ -284,9 +328,9 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not accept offer')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not accept offer')));
       }
     } finally {
       ref.read(globalLoadingProvider.notifier).state = false;
@@ -323,169 +367,175 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
               ),
             )
           : _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: AppTypography.body(size: 14, color: AppColors.muted),
-                      ),
-                      const SizedBox(height: 16),
-                      ZapSubmitButton(title: 'Retry', onPressed: _loadOffer),
-                    ],
+          ? Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.body(size: 14, color: AppColors.muted),
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  const SizedBox(height: 16),
+                  ZapSubmitButton(title: 'Retry', onPressed: _loadOffer),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              children: [
+                Text(
+                  'Loan amount',
+                  style: AppTypography.body(size: 13, color: AppColors.muted),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _currency.format(_amount),
+                  style: AppTypography.headline(size: 32),
+                ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: AppColors.accentMint,
+                    inactiveTrackColor: const Color(0xFF633AB1),
+                    thumbColor: AppColors.accentMint,
+                    overlayColor: AppColors.accentMint.withValues(alpha: 0.2),
+                  ),
+                  child: Slider(
+                    value: _amount.clamp(_minAmount, _maxAmount),
+                    min: _minAmount,
+                    max: _maxAmount <= _minAmount ? _minAmount + 1 : _maxAmount,
+                    divisions: _maxAmount <= _minAmount
+                        ? 1
+                        : ((_maxAmount - _minAmount) / 1000).round().clamp(
+                            1,
+                            100,
+                          ),
+                    onChanged: (v) {
+                      setState(() => _amount = v);
+                    },
+                    onChangeEnd: (_) => _recalcEmi(),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Loan amount',
-                      style: AppTypography.body(size: 13, color: AppColors.muted),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _currency.format(_amount),
-                      style: AppTypography.headline(size: 32),
-                    ),
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: AppColors.accentMint,
-                        inactiveTrackColor: const Color(0xFF633AB1),
-                        thumbColor: AppColors.accentMint,
-                        overlayColor: AppColors.accentMint.withValues(alpha: 0.2),
-                      ),
-                      child: Slider(
-                        value: _amount.clamp(_minAmount, _maxAmount),
-                        min: _minAmount,
-                        max: _maxAmount <= _minAmount ? _minAmount + 1 : _maxAmount,
-                        divisions: _maxAmount <= _minAmount
-                            ? 1
-                            : ((_maxAmount - _minAmount) / 1000)
-                                .round()
-                                .clamp(1, 100),
-                        onChanged: (v) {
-                          setState(() => _amount = v);
-                        },
-                        onChangeEnd: (_) => _recalcEmi(),
+                      _currency.format(_minAmount),
+                      style: AppTypography.body(
+                        size: 12,
+                        color: AppColors.muted,
                       ),
                     ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _currency.format(_minAmount),
-                          style: AppTypography.body(size: 12, color: AppColors.muted),
-                        ),
-                        Text(
-                          _currency.format(_maxAmount),
-                          style: AppTypography.body(size: 12, color: AppColors.muted),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // RN `chooseDurationText` + horizontal `durationViewStyle` chips
                     Text(
-                      'Choose loan duration',
-                      style: AppTypography.body(size: 15, color: Colors.white),
+                      _currency.format(_maxAmount),
+                      style: AppTypography.body(
+                        size: 12,
+                        color: AppColors.muted,
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 75,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _tenures.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (context, index) {
-                          final t = _tenures[index];
-                          final selected = _term == t;
-                          return Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() => _term = t);
-                                _recalcEmi();
-                              },
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // RN `chooseDurationText` + horizontal `durationViewStyle` chips
+                Text(
+                  'Choose loan duration',
+                  style: AppTypography.body(size: 15, color: Colors.white),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 75,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _tenures.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final t = _tenures[index];
+                      final selected = _term == t;
+                      return Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            setState(() => _term = t);
+                            _recalcEmi();
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: 115,
+                            height: 75,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF3E1982),
                               borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                width: 115,
-                                height: 75,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF3E1982),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: selected
-                                        ? AppColors.accentMint
-                                        : Colors.transparent,
-                                    width: selected ? 1 : 0,
-                                  ),
-                                ),
-                                child: Text(
-                                  t == 1 ? '1 Month' : '$t Months',
-                                  style: AppTypography.body(
-                                    size: 15,
-                                    color: AppColors.accentMint,
-                                  ),
-                                ),
+                              border: Border.all(
+                                color: selected
+                                    ? AppColors.accentMint
+                                    : Colors.transparent,
+                                width: selected ? 1 : 0,
                               ),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _metricRow('Interest rate', '${_interestRate.toStringAsFixed(0)}% p.a.'),
-                    _metricRow('Monthly EMI', _currency.format(_emi)),
-                    _metricRow(
-                      'Total interest',
-                      _currency.format(_interestAmount),
-                    ),
-                    const SizedBox(height: 24),
-                    InkWell(
-                      onTap: () => setState(() => _agreed = !_agreed),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            _agreed
-                                ? Icons.check_box
-                                : Icons.check_box_outline_blank,
-                            color: _agreed
-                                ? AppColors.accentMint
-                                : Colors.white70,
+                            child: Text(
+                              t == 1 ? '1 Month' : '$t Months',
+                              style: AppTypography.body(
+                                size: 15,
+                                color: AppColors.accentMint,
+                              ),
+                            ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Wrap(
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                Text(
-                                  'I agree with the ',
-                                  style: AppTypography.body(size: 13),
-                                ),
-                                GestureDetector(
-                                  onTap: () => showLegalAgreementSheet(context),
-                                  child: Text(
-                                    'Legal agreements',
-                                    style: AppTypography.body(
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _metricRow(
+                  'Interest rate',
+                  '${_interestRate.toStringAsFixed(0)}% p.a.',
+                ),
+                _metricRow('Monthly EMI', _currency.format(_emi)),
+                _metricRow('Total interest', _currency.format(_interestAmount)),
+                const SizedBox(height: 24),
+                InkWell(
+                  onTap: () => setState(() => _agreed = !_agreed),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _agreed
+                            ? Icons.check_box
+                            : Icons.check_box_outline_blank,
+                        color: _agreed ? AppColors.accentMint : Colors.white70,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              'I agree with the ',
+                              style: AppTypography.body(size: 13),
+                            ),
+                            GestureDetector(
+                              onTap: () => showLegalAgreementSheet(context),
+                              child: Text(
+                                'Legal agreements',
+                                style:
+                                    AppTypography.body(
                                       size: 13,
                                       color: AppColors.accentMint,
                                     ).copyWith(
                                       decoration: TextDecoration.underline,
                                       decorationColor: AppColors.accentMint,
                                     ),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              ],
+            ),
     );
   }
 
@@ -495,8 +545,14 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: AppTypography.body(size: 14, color: AppColors.muted)),
-          Text(value, style: AppTypography.body(size: 15, weight: FontWeight.w600)),
+          Text(
+            label,
+            style: AppTypography.body(size: 14, color: AppColors.muted),
+          ),
+          Text(
+            value,
+            style: AppTypography.body(size: 15, weight: FontWeight.w600),
+          ),
         ],
       ),
     );

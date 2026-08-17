@@ -19,6 +19,13 @@ import '../../../../core/widgets/funnel_scaffold.dart';
 import '../../../authentication/presentation/providers/auth_providers.dart';
 import '../../../dashboard/data/home_repository.dart';
 
+/// RN bankDetails / bankStatement title: Student → Bank Details, else Salary Account.
+String _bankAccountDetailsTitle(String userType) {
+  return userType.toLowerCase() == 'student'
+      ? 'Bank\nDetails'
+      : 'Salary\nAccount\nDetails';
+}
+
 /// RN `scenes/bankDetails` — name (read-only), IFSC lookup → bank/branch, account.
 class BankDetailsScreen extends ConsumerStatefulWidget {
   const BankDetailsScreen({super.key});
@@ -44,7 +51,9 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadCustomerName();
-      final type = await ref.read(sessionStorageProvider).read(StorageKeys.userType);
+      final type = await ref
+          .read(sessionStorageProvider)
+          .read(StorageKeys.userType);
       if (mounted) {
         setState(() {
           _userType = (type ?? 'Salaried').replaceAll('"', '');
@@ -74,11 +83,15 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
   Future<void> _loadCustomerName() async {
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) return;
 
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getCustomerInfo,
             data: {'customer_id': customerId},
             options: Options(contentType: Headers.jsonContentType),
@@ -99,12 +112,10 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
         }
       }
       if (row == null) return;
-      final first = row['first_name']?.toString() ??
-          row['firstName']?.toString() ??
-          '';
-      final last = row['last_name']?.toString() ??
-          row['lastName']?.toString() ??
-          '';
+      final first =
+          row['first_name']?.toString() ?? row['firstName']?.toString() ?? '';
+      final last =
+          row['last_name']?.toString() ?? row['lastName']?.toString() ?? '';
       final name = '$first $last'.trim();
       if (name.isNotEmpty && mounted) {
         setState(() => _customerName.text = name.toUpperCase());
@@ -135,7 +146,10 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
 
     setState(() => _lookingUpIfsc = true);
     try {
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getIfscInfo,
             data: {'ifsc': value},
             options: Options(contentType: Headers.jsonContentType),
@@ -199,16 +213,21 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
-      final deviceId =
-          (await storage.read(StorageKeys.deviceId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      final deviceId = (await storage.read(
+        StorageKeys.deviceId,
+      ))?.replaceAll('"', '');
 
       // StoreBankInfo overwrites Enach_Amount with request value (null if
       // omitted) — preserve any amount already set after offer origination.
       String? existingEnachAmount;
       try {
-        final bankRes = await ref.read(dioClientProvider).dio.post(
+        final bankRes = await ref
+            .read(dioClientProvider)
+            .dio
+            .post(
               ApiEndpoints.getBankAccountInformation,
               data: {
                 'customer_id': int.tryParse(customerId ?? '') ?? customerId,
@@ -230,7 +249,10 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
       } catch (_) {}
 
       // RN getBankDetails → StoreBankInfo (Bearer via useBearer)
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.storeBankInfo,
             data: {
               'deviceId': deviceId,
@@ -262,13 +284,10 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
 
       await ref.read(screenStatusServiceProvider).completeBank();
       if (!mounted) return;
-      // RN → ScreenName.bankStatement ("Salary Account Details" statement step)
+      // RN → ScreenName.bankStatement (title depends on Student vs Salaried)
       context.go(
         AppRoutes.bankStatement,
-        extra: {
-          'bankcode': _finbitCode,
-          'bankName': bank,
-        },
+        extra: {'bankcode': _finbitCode, 'bankName': bank},
       );
     } on DioException catch (e) {
       final data = e.response?.data;
@@ -291,12 +310,9 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final loading = ref.watch(globalLoadingProvider);
-    final title = _userType.toLowerCase() == 'student'
-        ? 'Bank\nDetails'
-        : 'Salary\nAccount\nDetails';
 
     return FunnelScaffold(
-      title: title,
+      title: _bankAccountDetailsTitle(_userType),
       totalSteps: 3,
       activeStep: 2,
       heroAsset: 'assets/images/bankdoc.png',
@@ -310,12 +326,7 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           _label('Name as per Bank Account*'),
-          _field(
-            _customerName,
-            'Enter Name',
-            readOnly: true,
-            muted: true,
-          ),
+          _field(_customerName, 'Enter Name', readOnly: true, muted: true),
           const SizedBox(height: 16),
           _label('Bank IFSC Code*'),
           _field(
@@ -351,20 +362,10 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
           ),
           const SizedBox(height: 16),
           _label('Bank Name*'),
-          _field(
-            _bankName,
-            'Enter Bank Name',
-            readOnly: true,
-            muted: true,
-          ),
+          _field(_bankName, 'Enter Bank Name', readOnly: true, muted: true),
           const SizedBox(height: 16),
           _label('Bank Branch*'),
-          _field(
-            _branch,
-            'Enter Branch',
-            readOnly: true,
-            muted: true,
-          ),
+          _field(_branch, 'Enter Branch', readOnly: true, muted: true),
         ],
       ),
     );
@@ -452,6 +453,21 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
   _PickedPdf? _month3;
   _PickedPdf? _singleFile;
   final _password = TextEditingController();
+  String _userType = 'Salaried';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final type = await ref
+          .read(sessionStorageProvider)
+          .read(StorageKeys.userType);
+      if (!mounted) return;
+      setState(() {
+        _userType = (type ?? 'Salaried').replaceAll('"', '');
+      });
+    });
+  }
 
   String? get _bankcode {
     final args = widget.args;
@@ -521,10 +537,12 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
-      final sfCustomerId =
-          (await storage.read(StorageKeys.sfCustomerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      final sfCustomerId = (await storage.read(
+        StorageKeys.sfCustomerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         _toast('Missing customer id — please re-login');
         return;
@@ -568,7 +586,10 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
       }
 
       final form = FormData.fromMap(map);
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.uploadFinbitBankStatement,
             data: form,
             options: Options(
@@ -610,13 +631,14 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
   @override
   Widget build(BuildContext context) {
     final loading = ref.watch(globalLoadingProvider);
-    final bankName = widget.args?['bankName']?.toString() ??
+    final bankName =
+        widget.args?['bankName']?.toString() ??
         (widget.args?['bankDetails'] is Map
             ? (widget.args!['bankDetails'] as Map)['bankName']?.toString()
             : null);
 
     return FunnelScaffold(
-      title: 'Salary\nAccount\nDetails',
+      title: _bankAccountDetailsTitle(_userType),
       totalSteps: 3,
       activeStep: 3,
       heroAsset: 'assets/images/bankdoc.png',
@@ -643,10 +665,7 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
               context.push(
                 AppRoutes.finbit,
                 extra: {
-                  'bankDetails': {
-                    'bankcode': _bankcode,
-                    'bankName': bankName,
-                  },
+                  'bankDetails': {'bankcode': _bankcode, 'bankName': bankName},
                   'bankcode': _bankcode,
                   'bankName': bankName,
                 },
@@ -654,9 +673,7 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
             },
           ),
           const SizedBox(height: 8),
-          Center(
-            child: Text('OR', style: AppTypography.body(size: 15)),
-          ),
+          Center(child: Text('OR', style: AppTypography.body(size: 15))),
           const SizedBox(height: 16),
           Text(
             'Upload your Bank Statement as (PDF Only)',
@@ -798,7 +815,11 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Icon(Icons.upload, color: Color(0xFFAC9FC6), size: 20),
+                    const Icon(
+                      Icons.upload,
+                      color: Color(0xFFAC9FC6),
+                      size: 20,
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       label,
@@ -816,8 +837,11 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.picture_as_pdf,
-                              color: Colors.white, size: 36),
+                          const Icon(
+                            Icons.picture_as_pdf,
+                            color: Colors.white,
+                            size: 36,
+                          ),
                           const SizedBox(height: 6),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -840,8 +864,11 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
                         child: const CircleAvatar(
                           radius: 10,
                           backgroundColor: Colors.white,
-                          child:
-                              Icon(Icons.close, size: 12, color: Colors.black),
+                          child: Icon(
+                            Icons.close,
+                            size: 12,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
                     ),
@@ -912,7 +939,10 @@ class _FinbitScreenState extends ConsumerState<FinbitScreen> {
   Future<void> _openNetBanking() async {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getFinbitUrl,
             data: {'bankcode': _bankcode ?? ''},
             options: Options(contentType: Headers.jsonContentType),
@@ -993,9 +1023,13 @@ class _FinbitScreenState extends ConsumerState<FinbitScreen> {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
-      await ref.read(dioClientProvider).dio.post(
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.finbitBankVerification,
             data: {
               'customerid': int.tryParse(customerId ?? '') ?? customerId,
@@ -1037,7 +1071,9 @@ class _FinbitScreenState extends ConsumerState<FinbitScreen> {
           ),
           title: Text(
             'Bank login',
-            style: AppTypography.headline(size: 16).copyWith(color: Colors.black),
+            style: AppTypography.headline(
+              size: 16,
+            ).copyWith(color: Colors.black),
           ),
         ),
         body: WebViewWidget(controller: _controller!),
@@ -1134,7 +1170,10 @@ class _ResidenceAddressScreenState
     setState(() => _lookingUpPin = true);
     try {
       // RN getAutoFillAddress → monexo addressAutofill/getCity
-      final cityRes = await ref.read(dioClientProvider).dio.post(
+      final cityRes = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.fetchCity,
             data: FormData.fromMap({'pincode': pin}),
           );
@@ -1149,7 +1188,10 @@ class _ResidenceAddressScreenState
       }
 
       // RN getLocality → first locality as default
-      final locRes = await ref.read(dioClientProvider).dio.post(
+      final locRes = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getLocalities,
             data: {'pincode': pin},
             options: Options(contentType: Headers.jsonContentType),
@@ -1162,7 +1204,10 @@ class _ResidenceAddressScreenState
           final first = list.first.toString();
           if (first.isNotEmpty) {
             _locality.text = first;
-            final subRes = await ref.read(dioClientProvider).dio.post(
+            final subRes = await ref
+                .read(dioClientProvider)
+                .dio
+                .post(
                   ApiEndpoints.getSubLocalities,
                   data: {'pincode': pin, 'locality': first},
                   options: Options(contentType: Headers.jsonContentType),
@@ -1181,7 +1226,10 @@ class _ResidenceAddressScreenState
 
       // data.gov postal → state (same source RN verifyPostalCode uses)
       try {
-        final gov = await ref.read(dioClientProvider).dio.get(
+        final gov = await ref
+            .read(dioClientProvider)
+            .dio
+            .get(
               'https://api.data.gov.in/resource/0a076478-3fd3-4e2c-b2d2-581876f56d77',
               queryParameters: {
                 'format': 'json',
@@ -1207,7 +1255,9 @@ class _ResidenceAddressScreenState
                 _city.text = region;
               }
             }
-          } else if (records is List && records.isNotEmpty && records.first is Map) {
+          } else if (records is List &&
+              records.isNotEmpty &&
+              records.first is Map) {
             final first = Map<String, dynamic>.from(records.first as Map);
             final stateName = first['statename']?.toString() ?? '';
             final region = first['regionname']?.toString() ?? '';
@@ -1242,27 +1292,33 @@ class _ResidenceAddressScreenState
       return;
     }
     if (city.isEmpty || state.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter city and state')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter city and state')));
       return;
     }
 
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Missing customer id — please re-login')),
+          const SnackBar(
+            content: Text('Missing customer id — please re-login'),
+          ),
         );
         return;
       }
 
       // RN StoreAddressInfo payload (postal, not pincode).
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.storeAddressInfo,
             data: {
               'city': city,
@@ -1296,9 +1352,9 @@ class _ResidenceAddressScreenState
       if (mounted) context.go(AppRoutes.waiting);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save address')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not save address')));
       }
     } finally {
       ref.read(globalLoadingProvider.notifier).state = false;
@@ -1349,11 +1405,7 @@ class _ResidenceAddressScreenState
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _field(
-            controller: _address,
-            hint: 'Full address',
-            maxLines: 3,
-          ),
+          _field(controller: _address, hint: 'Full address', maxLines: 3),
           const SizedBox(height: 12),
           _field(
             controller: _postal,
@@ -1387,7 +1439,11 @@ class _ResidenceAddressScreenState
 }
 
 class WaitingScreen extends ConsumerStatefulWidget {
-  const WaitingScreen({super.key});
+  const WaitingScreen({super.key, this.isTopUp = false});
+
+  /// Re-apply after a repaid loan: an approved decision leads to the offer
+  /// screen, not back to Home where the customer started.
+  final bool isTopUp;
 
   @override
   ConsumerState<WaitingScreen> createState() => _WaitingScreenState();
@@ -1396,6 +1452,7 @@ class WaitingScreen extends ConsumerStatefulWidget {
 class _WaitingScreenState extends ConsumerState<WaitingScreen> {
   String? _error;
   bool _running = false;
+  bool _repeatLoan = false;
 
   @override
   void initState() {
@@ -1429,7 +1486,7 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
     final s = status?.toUpperCase();
     if (s == 'APP') {
       ref.read(homeRefreshTickProvider.notifier).state++;
-      context.go(AppRoutes.home);
+      context.go(_repeatLoan ? AppRoutes.offer : AppRoutes.home);
       return true;
     }
     if (s == 'REJ') {
@@ -1445,7 +1502,10 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
 
   Future<String?> _fetchExistingOfferStatus(String customerId) async {
     try {
-      final response = await ref.read(dioClientProvider).dio.post(
+      final response = await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.getCreditDecisionInformation,
             data: {'customer_id': customerId},
             options: Options(contentType: Headers.jsonContentType),
@@ -1468,11 +1528,24 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
 
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         setState(() => _error = 'Missing customer id — please re-login');
         return;
+      }
+
+      _repeatLoan = widget.isTopUp;
+      if (!_repeatLoan) {
+        try {
+          final bundle = await ref
+              .read(homeRepositoryProvider)
+              .fetchHomeBundle();
+          _repeatLoan = bundle.home.topUpEligible && bundle.home.loanCompleted;
+        } catch (_) {
+          // Continue with the explicit route flag when Home is unavailable.
+        }
       }
 
       // CD can sleep ~30s waiting for Finbit name-match; allow retries.
@@ -1481,7 +1554,10 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
 
       for (var i = 0; i < attempts; i++) {
         try {
-          final response = await ref.read(dioClientProvider).dio.post(
+          final response = await ref
+              .read(dioClientProvider)
+              .dio
+              .post(
                 ApiEndpoints.creditDecision,
                 data: {'cust_id': customerId},
                 options: Options(

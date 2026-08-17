@@ -9,6 +9,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../../core/widgets/funnel_scaffold.dart';
 import '../../../authentication/presentation/providers/auth_providers.dart';
+import '../../../dashboard/data/home_repository.dart';
 import '../../../device_sync/device_sync_service.dart';
 
 /// RN `scenes/locationPermission` — after credit score, before bank/college.
@@ -32,7 +33,18 @@ class _LocationPermissionScreenState
     if (userType.toLowerCase() == 'student') {
       context.go(AppRoutes.collegeDetails);
     } else {
-      context.go(AppRoutes.bankDetails);
+      var repeatLoan = false;
+      try {
+        final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
+        repeatLoan = bundle.home.topUpEligible && bundle.home.loanCompleted;
+      } catch (_) {
+        // The bank refresh remains safe if Home cannot be loaded.
+      }
+      if (!mounted) return;
+      context.go(
+        repeatLoan ? AppRoutes.employerDetails : AppRoutes.bankDetails,
+        extra: repeatLoan ? const {'isFrom': 'repeatLoan'} : null,
+      );
     }
   }
 
@@ -69,7 +81,11 @@ class _LocationPermissionScreenState
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
         children: [
-          const Icon(Icons.location_on_outlined, size: 72, color: AppColors.accentMint),
+          const Icon(
+            Icons.location_on_outlined,
+            size: 72,
+            color: AppColors.accentMint,
+          ),
           const SizedBox(height: 24),
           Text('Location', style: AppTypography.headline(size: 18)),
           const SizedBox(height: 8),

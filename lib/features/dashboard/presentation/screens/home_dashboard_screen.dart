@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/services/screen_status_resolver.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
+import '../../../payments/data/emi_payment_repository.dart';
+import '../../../loans/data/esign_repository.dart';
 import '../../data/home_repository.dart';
 import '../../domain/home_snapshot.dart';
 
@@ -21,10 +24,15 @@ class HomeDashboardScreen extends ConsumerStatefulWidget {
 class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     with WidgetsBindingObserver {
   HomeBundle? _bundle;
+  EsignStatus? _esignStatus;
   String? _error;
   bool _loading = true;
   final _resolver = const HomeCardResolver();
-  final _currency = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+  final _currency = NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: 0,
+  );
 
   @override
   void initState() {
@@ -53,9 +61,23 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     });
     try {
       final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
+      EsignStatus? esign;
+      final home = bundle.home;
+      final shouldLoadEsign = home != null &&
+          home.peerStage.toLowerCase() == 'funded';
+      if (shouldLoadEsign) {
+        try {
+          esign = await ref
+              .read(esignRepositoryProvider)
+              .fetchStatus(refresh: false);
+        } catch (_) {
+          esign = null;
+        }
+      }
       if (mounted) {
         setState(() {
           _bundle = bundle;
+          _esignStatus = esign;
           _loading = false;
         });
       }
@@ -75,6 +97,161 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     context.push(AppRoutes.dkyc);
   }
 
+  /// RN home Pre-Pay / Pay EMI modal → Cashfree EMI UPI checkout.
+  Future<void> _showEmiPaymentSheet(HomeSnapshot home) async {
+    final amount = home.installmentAmount;
+    final contractId = home.contractId;
+    if (amount == null || amount <= 0 || contractId == null || contractId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('EMI amount unavailable for this loan')),
+      );
+      return;
+    }
+
+    final due = home.installmentStartDate;
+    final dueIn = due == null
+        ? null
+        : DateTime(due.year, due.month, due.day)
+            .difference(
+              DateTime(
+                DateTime.now().year,
+                DateTime.now().month,
+                DateTime.now().day,
+              ),
+            )
+            .inDays;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF2A0A5C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'EMI Payment',
+                      style: AppTypography.headline(
+                        size: 18,
+                        color: AppColors.accentMint,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (dueIn != null)
+                      Text(
+                        'DUE IN $dueIn Days',
+                        style: AppTypography.body(size: 12),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Material(
+                  color: Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _startEmiCheckout(
+                        amount: amount,
+                        contractId: contractId,
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 18,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Pay EMI amount (${_currency.format(amount)})',
+                              style: AppTypography.body(size: 14),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right,
+                            color: AppColors.accentMint,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _startEmiCheckout({
+    required num amount,
+    required String contractId,
+  }) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final result = await ref.read(emiPaymentRepositoryProvider).createEmiCheckout(
+            amount: amount,
+            contractId: contractId,
+          );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (result.mockPaid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('EMI payment recorded')),
+        );
+        await _load();
+        return;
+      }
+
+      final uri = Uri.parse(result.upiUrl);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) return;
+      if (!launched) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open UPI app')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Complete payment in your UPI app, then return here'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not start EMI payment')),
+      );
+    }
+  }
+
+  void _openEsign() {
+    if (!mounted) return;
+    context.push(AppRoutes.esign);
+  }
+
   void _showCompleteProcessSheet(HomeSnapshot home) {
     final flags = _bundle?.flags;
     showModalBottomSheet<void>(
@@ -91,7 +268,10 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Complete your process', style: AppTypography.headline(size: 20)),
+                Text(
+                  'Complete your process',
+                  style: AppTypography.headline(size: 20),
+                ),
                 const SizedBox(height: 12),
                 _StepRow(
                   done: (flags?.ocr == true) || (flags?.vkyc == true),
@@ -139,19 +319,19 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     final kind = _loading
         ? HomeCardKind.loading
         : _error != null
-            ? HomeCardKind.error
-            : _resolver.resolve(
-                home: home,
-                plOrDc: (flags?.pl ?? false) || (flags?.dc ?? false),
-                enach: flags?.enach ?? false,
-                ocr: flags?.ocr ?? false,
-                vkyc: flags?.vkyc ?? false,
-                bank: flags?.bankDetails ?? false,
-                bankVerified: flags?.bankDetailsVerified ?? false,
-                finbit: flags?.finbit ?? false,
-                equifax: flags?.equifax ?? false,
-                creditStatus: credit?.status,
-              );
+        ? HomeCardKind.error
+        : _resolver.resolve(
+            home: home,
+            plOrDc: (flags?.pl ?? false) || (flags?.dc ?? false),
+            enach: flags?.enach ?? false,
+            ocr: flags?.ocr ?? false,
+            vkyc: flags?.vkyc ?? false,
+            bank: flags?.bankDetails ?? false,
+            bankVerified: flags?.bankDetailsVerified ?? false,
+            finbit: flags?.finbit ?? false,
+            equifax: flags?.equifax ?? false,
+            creditStatus: credit?.status,
+          );
 
     return Scaffold(
       backgroundColor: AppColors.deepPurple,
@@ -172,14 +352,21 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         const SizedBox(height: 4),
                         Text(
                           'Your loan overview',
-                          style: AppTypography.body(size: 14, color: AppColors.muted),
+                          style: AppTypography.body(
+                            size: 14,
+                            color: AppColors.muted,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => context.push(AppRoutes.profile),
-                    icon: const Icon(Icons.person_outline, color: Colors.white, size: 28),
+                    icon: const Icon(
+                      Icons.person_outline,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                 ],
               ),
@@ -188,7 +375,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 const Padding(
                   padding: EdgeInsets.only(top: 48),
                   child: Center(
-                    child: CircularProgressIndicator(color: AppColors.accentMint),
+                    child: CircularProgressIndicator(
+                      color: AppColors.accentMint,
+                    ),
                   ),
                 )
               else if (_error != null)
@@ -210,64 +399,69 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   Widget _buildHero(HomeCardKind kind, HomeSnapshot? home) {
     final flags = _bundle?.flags;
     final credit = _bundle?.creditDecision;
-    final isSalaried =
-        (_bundle?.userType ?? '').toLowerCase() == 'salaried';
-    final showUnlock =
-        isSalaried && flags?.employerDetails != true;
+    final isSalaried = (_bundle?.userType ?? '').toLowerCase() == 'salaried';
+    final showUnlock = isSalaried && flags?.employerDetails != true;
 
     switch (kind) {
       case HomeCardKind.activeLoan:
-        return _HeroCard(
-          title: 'Active loan',
-          body: [
-            if (home?.approvedAmount != null)
-              'Amount: ${_currency.format(home!.approvedAmount)}',
-            if (home?.emiAmount != null) 'EMI: ${_currency.format(home!.emiAmount)}',
-            if (home?.remainingEmi != null) 'Remaining EMIs: ${home!.remainingEmi}',
-            if (home?.nextInstallmentDate != null)
-              'Next installment: ${home!.nextInstallmentDate}',
-            if (home?.contractId != null) 'Contract: ${home!.contractId}',
-          ].join('\n'),
-          accentAsset: 'assets/images/profile/homecoins.png',
-          actionLabel: 'View loan',
-          onAction: () => context.push(
-            AppRoutes.myLoans,
-            extra: home?.contractId,
-          ),
-          secondaryLabel: 'Pay / Pre-pay',
-          onSecondary: () => context.push(AppRoutes.enach),
+      case HomeCardKind.loanCompleted:
+        return _LoanCard(
+          home: home!,
+          currency: _currency,
+          completed: kind == HomeCardKind.loanCompleted,
+          onViewLoan: () =>
+              context.push(AppRoutes.myLoans, extra: home.contractId),
+          onPrePay: () => _showEmiPaymentSheet(home),
+          // A repaid loan starts a fresh underwriting cycle. The backend has
+          // invalidated bureau, income/bank and mandate steps; begin with a new
+          // credit pull instead of generating an offer from stale data.
+          onApplyNewLoan: () => context.go(AppRoutes.equifax),
         );
       case HomeCardKind.funding:
         final isSalaried =
             (_bundle?.userType ?? '').toLowerCase() == 'salaried';
-        final loanFunded =
-            (home?.peerStage ?? '').toLowerCase() == 'funded';
+        final loanFunded = (home?.peerStage ?? '').toLowerCase() == 'funded';
+        final hasSigningLink = loanFunded &&
+            (_esignStatus?.signingLink?.trim().isNotEmpty ?? false);
+        final esignDone = loanFunded && _esignStatus?.isSigned == true;
+        final fundingBody = hasSigningLink && !esignDone
+            ? 'Your loan agreement is ready. Sign it to proceed with disbursement.'
+            : loanFunded && !esignDone
+            ? 'Your loan is funded. We will notify you when the agreement is ready to sign.'
+            : 'Your loan is in process of funding';
         return _HeroCard(
           title: 'Disbursal Process',
-          body: 'Your loan is in process of funding',
+          body: fundingBody,
           accentAsset: 'assets/images/profile/homecoins.png',
+          actionLabel: hasSigningLink && !esignDone
+              ? 'Sign loan agreement'
+              : null,
+          onAction: hasSigningLink && !esignDone ? _openEsign : null,
           timeline: _FundingTimeline(
             kycLabel: isSalaried ? 'Video KYC' : 'Digital KYC',
             loanFunded: loanFunded,
+            esignDone: esignDone,
+            esignPending: hasSigningLink && !esignDone,
           ),
         );
       case HomeCardKind.cancelled:
         return _HeroCard(
           title: 'Loan cancelled',
-          body: 'This application was cancelled and isn’t eligible for re-apply yet.',
+          body:
+              'This application was cancelled and isn’t eligible for re-apply yet.',
           actionLabel: 'Go to profile',
           onAction: () => context.push(AppRoutes.profile),
         );
       case HomeCardKind.cancelReapply:
         return _HeroCard(
           title: 'Ready to re-apply',
-          body: 'Your previous application was cancelled. You can start a new loan request.',
+          body:
+              'Your previous application was cancelled. You can start a new loan request.',
           actionLabel: 'Apply again',
           onAction: () => context.go(AppRoutes.waiting),
         );
       case HomeCardKind.completeProcess:
-        final kycDone =
-            (flags?.ocr == true) || (flags?.vkyc == true);
+        final kycDone = (flags?.ocr == true) || (flags?.vkyc == true);
         final isSalaried =
             (_bundle?.userType ?? '').toLowerCase() == 'salaried';
         return _HeroCard(
@@ -279,6 +473,8 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             kycLabel: isSalaried ? 'Video KYC' : 'Digital KYC',
             emailDone: home?.emailVerified == true,
             enachDone: flags?.enach == true,
+            esignDone: false,
+            esignPending: false,
           ),
           actionLabel: 'Take action',
           onAction: () => _showCompleteProcessSheet(home!),
@@ -296,9 +492,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           secondaryLabel: showUnlock ? 'Unlock upto ₹50,000' : null,
           onSecondary: showUnlock
               ? () => context.push(
-                    AppRoutes.employerDetails,
-                    extra: {'isFrom': 'unlockOffer'},
-                  )
+                  AppRoutes.employerDetails,
+                  extra: {'isFrom': 'unlockOffer'},
+                )
               : null,
         );
       case HomeCardKind.creditPending:
@@ -390,12 +586,19 @@ class _HeroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (accentAsset != null) ...[
-            Image.asset(accentAsset!, height: 56, errorBuilder: (_, __, ___) => const SizedBox()),
+            Image.asset(
+              accentAsset!,
+              height: 56,
+              errorBuilder: (_, __, ___) => const SizedBox(),
+            ),
             const SizedBox(height: 12),
           ],
           Text(title, style: AppTypography.headline(size: 22)),
           const SizedBox(height: 10),
-          Text(body, style: AppTypography.body(size: 14, color: AppColors.muted)),
+          Text(
+            body,
+            style: AppTypography.body(size: 14, color: AppColors.muted),
+          ),
           if (timeline != null) ...[
             const SizedBox(height: 16),
             timeline!,
@@ -422,7 +625,10 @@ class _HeroCard extends StatelessWidget {
               onPressed: onSecondary,
               child: Text(
                 secondaryLabel!,
-                style: AppTypography.body(size: 14, color: AppColors.accentMint),
+                style: AppTypography.body(
+                  size: 14,
+                  color: AppColors.accentMint,
+                ),
               ),
             ),
         ],
@@ -431,15 +637,343 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
+/// RN home "Your Loan" card: installment progress, loan facts and a due strip.
+class _LoanCard extends StatelessWidget {
+  const _LoanCard({
+    required this.home,
+    required this.currency,
+    required this.completed,
+    required this.onViewLoan,
+    required this.onPrePay,
+    required this.onApplyNewLoan,
+  });
+
+  final HomeSnapshot home;
+  final NumberFormat currency;
+  final bool completed;
+  final VoidCallback onViewLoan;
+  final VoidCallback onPrePay;
+  final VoidCallback onApplyNewLoan;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = home.totalInstallments ?? 0;
+    final paid = home.paidInstallments;
+    final amount = home.loanAmount ?? home.approvedAmount;
+    final canApply = home.canApplyForNewLoan;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3A1478), Color(0xFF230261)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Text(
+                  completed ? 'Loan repaid' : 'Your Loan',
+                  style: AppTypography.headline(size: 20),
+                ),
+              ),
+              if (amount != null)
+                Text(
+                  currency.format(amount),
+                  style: AppTypography.headline(
+                    size: 22,
+                    color: AppColors.accentMint,
+                  ),
+                ),
+            ],
+          ),
+          if (home.contractId != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              home.contractId!,
+              style: AppTypography.body(size: 11, color: AppColors.muted),
+            ),
+          ],
+          if (total > 0) ...[
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Your Installments',
+                    style: AppTypography.body(
+                      size: 12,
+                      color: AppColors.accentMint,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$paid of $total paid',
+                  style: AppTypography.body(size: 11, color: AppColors.muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _InstallmentProgress(total: total, paid: paid),
+          ],
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                if (home.installmentStartDate != null)
+                  _LoanFactRow(
+                    label: 'Start Date',
+                    value: _formatDay(home.installmentStartDate!),
+                  ),
+                if (total > 0)
+                  _LoanFactRow(label: 'Loan tenure', value: '$total M'),
+                if (home.installmentAmount != null)
+                  _LoanFactRow(
+                    label: 'EMI Amount',
+                    value: currency.format(home.installmentAmount),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _DueStatusStrip(
+            completed: completed,
+            overdueDays: home.overdueDays,
+            nextInstallmentLabel: _nextInstallmentLabel(paid, total),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: completed
+                ? (canApply ? onApplyNewLoan : onViewLoan)
+                : onPrePay,
+            child: Text(
+              completed
+                  ? (canApply ? 'Apply for New Loan' : 'View loan')
+                  : 'Pre-Pay',
+            ),
+          ),
+          if (!completed || canApply)
+            TextButton(
+              onPressed: onViewLoan,
+              child: Text(
+                'View loan details',
+                style: AppTypography.body(
+                  size: 14,
+                  color: AppColors.accentMint,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String? _nextInstallmentLabel(int paid, int total) {
+    final raw = home.nextInstallmentDate;
+    if (raw == null || raw.isEmpty) return null;
+    final date = DateTime.tryParse(raw);
+    if (date == null) return null;
+    final next = total > 0 ? (paid + 1).clamp(1, total) : paid + 1;
+    return '${_ordinal(next)} EMI Due Date : ${_formatFullDay(date)}';
+  }
+}
+
+class _LoanFactRow extends StatelessWidget {
+  const _LoanFactRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: AppTypography.body(size: 12)),
+          Text(
+            value,
+            style: AppTypography.body(size: 12, color: AppColors.accentMint),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Segmented EMI bar mirroring RN `setuSteps` (one segment per installment).
+class _InstallmentProgress extends StatelessWidget {
+  const _InstallmentProgress({required this.total, required this.paid});
+
+  final int total;
+  final int paid;
+
+  @override
+  Widget build(BuildContext context) {
+    // Per-segment ordinals get unreadable on long tenures; the header already
+    // carries the "x of y paid" count in that case.
+    final showLabels = total <= 8;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            for (var i = 1; i <= total; i++) ...[
+              Expanded(
+                child: Container(
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: i <= paid
+                        ? AppColors.accentMint
+                        : Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(i == 1 ? 6 : 2),
+                      right: Radius.circular(i == total ? 6 : 2),
+                    ),
+                  ),
+                ),
+              ),
+              if (i != total) const SizedBox(width: 3),
+            ],
+          ],
+        ),
+        if (showLabels) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              for (var i = 1; i <= total; i++) ...[
+                Expanded(
+                  child: Text(
+                    _ordinal(i),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: AppTypography.body(
+                      size: 9,
+                      color: i <= paid
+                          ? AppColors.accentMint
+                          : Colors.white.withValues(alpha: 0.4),
+                    ),
+                  ),
+                ),
+                if (i != total) const SizedBox(width: 3),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// RN due strip: mint when repaid, red when an EMI is overdue, else neutral.
+class _DueStatusStrip extends StatelessWidget {
+  const _DueStatusStrip({
+    required this.completed,
+    required this.overdueDays,
+    required this.nextInstallmentLabel,
+  });
+
+  final bool completed;
+  final int? overdueDays;
+  final String? nextInstallmentLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    late final Color background;
+    late final Color foreground;
+    late final IconData icon;
+    late final String message;
+
+    if (completed) {
+      background = AppColors.accentMint.withValues(alpha: 0.16);
+      foreground = AppColors.accentMint;
+      icon = Icons.check_circle_outline;
+      message = 'Congratulation, you have completed loan re-payment';
+    } else if (overdueDays != null) {
+      background = const Color(0xFFFF0047);
+      foreground = AppColors.white;
+      icon = Icons.error_outline;
+      message = 'You have missed your EMI due date by $overdueDays days';
+    } else {
+      background = Colors.white.withValues(alpha: 0.07);
+      foreground = AppColors.white;
+      icon = Icons.event_outlined;
+      message = nextInstallmentLabel ?? 'Your EMI schedule is being prepared';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.body(size: 12, color: foreground),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatDay(DateTime date) =>
+    '${date.day}${_ordinalSuffix(date.day)} ${DateFormat('MMM').format(date)}';
+
+String _formatFullDay(DateTime date) => '${_formatDay(date)} ${date.year}';
+
+String _ordinal(int n) => '$n${_ordinalSuffix(n)}';
+
+String _ordinalSuffix(int n) {
+  if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+  switch (n % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
 /// RN home funding card after KYC + email + eNACH (Disbursal_Bank_Status blank).
 class _FundingTimeline extends StatelessWidget {
   const _FundingTimeline({
     required this.kycLabel,
     required this.loanFunded,
+    this.esignDone = false,
+    this.esignPending = false,
   });
 
   final String kycLabel;
   final bool loanFunded;
+  final bool esignDone;
+  final bool esignPending;
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +987,13 @@ class _FundingTimeline extends StatelessWidget {
         const _InProcessRow(),
         const SizedBox(height: 10),
         _TimelineStep(done: loanFunded, label: 'Loan funded'),
+        if (loanFunded || esignPending || esignDone)
+          _TimelineStep(
+            done: esignDone,
+            label: esignPending && !esignDone
+                ? 'Sign loan agreement (pending)'
+                : 'Loan agreement signed',
+          ),
         const _TimelineStep(done: false, label: 'Loan disbursed'),
       ],
     );
@@ -466,12 +1007,16 @@ class _PendingChecklist extends StatelessWidget {
     required this.kycLabel,
     required this.emailDone,
     required this.enachDone,
+    this.esignDone = false,
+    this.esignPending = false,
   });
 
   final bool kycDone;
   final String kycLabel;
   final bool emailDone;
   final bool enachDone;
+  final bool esignDone;
+  final bool esignPending;
 
   @override
   Widget build(BuildContext context) {
@@ -481,6 +1026,13 @@ class _PendingChecklist extends StatelessWidget {
         _TimelineStep(done: kycDone, label: kycLabel),
         _TimelineStep(done: emailDone, label: 'Activate E-mail ID'),
         _TimelineStep(done: enachDone, label: 'E-Nach'),
+        if (esignPending || esignDone)
+          _TimelineStep(
+            done: esignDone,
+            label: esignPending && !esignDone
+                ? 'Sign loan agreement (pending)'
+                : 'Loan agreement signed',
+          ),
       ],
     );
   }
@@ -563,7 +1115,10 @@ class _MiniStep extends StatelessWidget {
           size: 22,
         ),
         const SizedBox(height: 6),
-        Text(label, style: AppTypography.body(size: 12, color: AppColors.muted)),
+        Text(
+          label,
+          style: AppTypography.body(size: 12, color: AppColors.muted),
+        ),
       ],
     );
   }

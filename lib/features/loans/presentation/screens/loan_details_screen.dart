@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/services/screen_status_resolver.dart';
@@ -9,6 +10,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../../core/widgets/funnel_scaffold.dart';
 import '../../../dashboard/data/home_repository.dart';
+import '../../../payments/data/emi_payment_repository.dart';
 import '../../../profile/data/profile_repository.dart';
 import '../../data/loan_contract_pdf.dart';
 import '../../data/loans_prefetch.dart';
@@ -35,6 +37,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
   bool _cancelModal = false;
   bool _paymentModal = false;
   bool _downloadingPdf = false;
+  int? _downloadingPdfIndex;
 
   final _currency = NumberFormat.currency(
     locale: 'en_IN',
@@ -302,7 +305,10 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
 
   Future<void> _downloadContract(Map<String, dynamic> offer, int index) async {
     if (_downloadingPdf) return;
-    setState(() => _downloadingPdf = true);
+    setState(() {
+      _downloadingPdf = true;
+      _downloadingPdfIndex = index;
+    });
     try {
       // Prefer nested `data` if hub wrapped it like RN `{ id, value, data }`.
       final payload = offer['data'] is Map
@@ -328,26 +334,27 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _downloadingPdf = false);
+      if (mounted) {
+        setState(() {
+          _downloadingPdf = false;
+          _downloadingPdfIndex = null;
+        });
+      }
     }
   }
 
   int? get _emiAmount {
     final detail = _loanDetail;
     if (detail == null) return null;
-    final disbursal = detail['dibursalAmount'] ??
-        detail['disbursalAmount'] ??
-        detail['amountFunded'] ??
-        detail['loanAmount'];
-    final tenure = detail['loanTenure'];
-    final d = disbursal is num
-        ? disbursal.toDouble()
-        : double.tryParse(disbursal?.toString() ?? '');
-    final t = tenure is num
-        ? tenure.toDouble()
-        : double.tryParse(tenure?.toString() ?? '');
-    if (d == null || t == null || t <= 0) return null;
-    return (d / t).round();
+    // Prefer backend EMI (`loanDue`); do not divide principal by tenure.
+    for (final key in ['loanDue', 'emiAmount', 'emi']) {
+      final raw = detail[key];
+      final n = raw is num
+          ? raw.toDouble()
+          : double.tryParse(raw?.toString() ?? '');
+      if (n != null && n > 0) return n.round();
+    }
+    return null;
   }
 
   int? get _daysUntilDue {
@@ -359,6 +366,69 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
     final start = DateTime(today.year, today.month, today.day);
     final end = DateTime(due.year, due.month, due.day);
     return end.difference(start).inDays;
+  }
+
+  /// Same Cashfree EMI checkout as Home Pre-Pay.
+  Future<void> _startEmiCheckout() async {
+    final amount = _emiAmount;
+    final contractId = _contractId?.trim();
+    if (amount == null ||
+        amount <= 0 ||
+        contractId == null ||
+        contractId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('EMI amount unavailable for this loan')),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final result =
+          await ref.read(emiPaymentRepositoryProvider).createEmiCheckout(
+                amount: amount,
+                contractId: contractId,
+              );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (result.mockPaid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('EMI payment recorded')),
+        );
+        await _load();
+        return;
+      }
+
+      final uri = Uri.parse(result.upiUrl);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) return;
+      if (!launched) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open UPI app')),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Complete payment in your UPI app, then return here'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not start EMI payment')),
+      );
+    }
   }
 
   @override
@@ -631,11 +701,25 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                     : <String, dynamic>{};
                                 final amt = map['loanAmt'] ??
                                     c['loanAmt'] ??
+                                    c['offeredLoanAmt'] ??
                                     (c['data'] is Map
                                         ? (c['data'] as Map)['offeredLoanAmt']
                                         : null);
-                                final dt = map['dt'] ?? c['dt'] ?? '';
-                                final titleAmt = amt ?? c['DocumentName'];
+                                final pd = c['pd'] is Map
+                                    ? Map<String, dynamic>.from(c['pd'] as Map)
+                                    : <String, dynamic>{};
+                                final dt = map['dt']?.toString().isNotEmpty == true
+                                    ? map['dt']
+                                    : (c['dt'] ?? pd['dateAndTime'] ?? '');
+                                final rawName = c['DocumentName']?.toString();
+                                final titleFallback =
+                                    (rawName != null &&
+                                            rawName.isNotEmpty &&
+                                            !rawName
+                                                .toLowerCase()
+                                                .contains('salary_slip'))
+                                        ? rawName
+                                        : 'Loan Contract';
                                 return Material(
                                   color: Colors.transparent,
                                   child: InkWell(
@@ -670,8 +754,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                                 Text(
                                                   amt != null
                                                       ? 'Loan of ${_formatAmount(amt)}'
-                                                      : (titleAmt?.toString() ??
-                                                          'Loan Contract'),
+                                                      : titleFallback,
                                                   style: AppTypography.body(
                                                     size: 14,
                                                   ),
@@ -691,7 +774,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                               ],
                                             ),
                                           ),
-                                          if (_downloadingPdf)
+                                          if (_downloadingPdfIndex == index)
                                             const SizedBox(
                                               width: 22,
                                               height: 22,
@@ -742,8 +825,8 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                 context.push(AppRoutes.dkyc);
               } else if (!_flags.enach) {
                 context.push(AppRoutes.enach);
-              } else {
-                context.go(AppRoutes.home);
+              } else if (display == 'Funded') {
+                context.push(AppRoutes.esign);
               }
             },
           ),
@@ -754,13 +837,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
             onClose: () => setState(() => _paymentModal = false),
             onPay: () {
               setState(() => _paymentModal = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Opening EMI payment… (Cashfree checkout)',
-                  ),
-                ),
-              );
+              _startEmiCheckout();
             },
           ),
         if (_cancelModal)

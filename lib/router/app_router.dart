@@ -26,6 +26,7 @@ import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/payments/presentation/screens/enach_screen.dart';
 import '../features/payments/presentation/screens/enach_upi_screen.dart';
 import '../features/loans/presentation/screens/loan_details_screen.dart';
+import '../features/loans/presentation/screens/esign_screen.dart';
 import '../features/profile/presentation/screens/profile_detail_screens.dart';
 import '../features/profile/presentation/screens/profile_hub_screen.dart';
 import '../features/profile/presentation/screens/salary_details_screen.dart';
@@ -141,7 +142,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.waiting,
-        builder: (context, state) => const WaitingScreen(),
+        builder: (context, state) => WaitingScreen(
+          isTopUp: state.extra is Map &&
+              (state.extra as Map)['isTopUp'] == true,
+        ),
       ),
       GoRoute(
         path: AppRoutes.offer,
@@ -180,6 +184,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.dkyc,
         builder: (context, state) => const DkycScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.esign,
+        builder: (context, state) => const EsignScreen(),
       ),
       GoRoute(
         path: AppRoutes.emailVerification,

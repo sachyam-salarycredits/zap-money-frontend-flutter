@@ -99,7 +99,12 @@ class LoanContractPdfService {
           offer['loanTenure'],
     );
     final rate = _s(offer['interestRate'] ?? disbursement['interestRate']);
-    final dt = _s(offer['dt'] ?? disbursement['dt']);
+    final offerDt = _s(
+      offer['dt'] ??
+          pd['dateAndTime'] ??
+          pd['dt'],
+    );
+    final disbursementDt = _s(disbursement['dt']);
     final ip = _s(offer['ipAddress'] ?? disbursement['ipAddress']);
 
     pdf.addPage(
@@ -130,13 +135,13 @@ class LoanContractPdfService {
             ['Amount (₹)', amount],
             ['Tenure (Months)', tenure],
             ['Interest Rate (p.a.)', rate],
-            ['Date', dt],
+            ['Date', offerDt],
             ['IP Address', ip],
           ]),
           pw.SizedBox(height: 16),
           _sectionTitle('Borrower Acceptance'),
           _kvTable([
-            ['Date and Time', _s(pd['dateAndTime'] ?? pd['dt'])],
+            ['Date and Time', _s(pd['dateAndTime'] ?? pd['dt'] ?? offerDt)],
             ['IP Address', _s(pd['ipAddress'])],
             ['Name', _s(pd['name'] ?? pd['customerName'])],
           ]),
@@ -147,7 +152,7 @@ class LoanContractPdfService {
             ['Disbursed Loan Amount (₹)', amount],
             ['Loan Tenor (Months)', tenure],
             ['Interest Rate (p.a.)', rate],
-            ['Date', dt],
+            ['Date', disbursementDt],
           ]),
           if (lenders.isNotEmpty) ...[
             pw.SizedBox(height: 16),

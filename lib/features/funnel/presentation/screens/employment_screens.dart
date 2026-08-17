@@ -261,15 +261,9 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       'customer_id': customerId,
       if (sfCustomerId != null && sfCustomerId.isNotEmpty)
         'sf_customer_id': sfCustomerId,
-      'file': await MultipartFile.fromFile(
-        file.path,
-        filename: file.name,
-      ),
+      'file': await MultipartFile.fromFile(file.path, filename: file.name),
     });
-    await dio.post(
-      ApiEndpoints.saveDocument,
-      data: form,
-    );
+    await dio.post(ApiEndpoints.saveDocument, data: form);
   }
 
   Future<void> _submit() async {
@@ -313,10 +307,12 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
-      final sfCustomerId =
-          (await storage.read(StorageKeys.sfCustomerId))?.replaceAll('"', '');
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      final sfCustomerId = (await storage.read(
+        StorageKeys.sfCustomerId,
+      ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         _toast('Missing customer id');
         return;
@@ -382,6 +378,13 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       // Mid-funnel / profile edit still lands on bank when not unlocking.
       if (widget.isFrom == 'unlockOffer') {
         context.go(AppRoutes.waiting);
+      } else if (widget.isFrom == 'repeatLoan') {
+        // A repeat application needs a newly uploaded income document before
+        // refreshing the salary-account statement.
+        context.go(
+          AppRoutes.profileSalary,
+          extra: const {'isRepeatLoan': true},
+        );
       } else if (widget.isFrom == 'editProfile') {
         context.go(AppRoutes.profile);
       } else {
@@ -416,9 +419,13 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           _label('Company name'),
-          _input(_company, 'Enter your company name', onChanged: (_) {
-            setState(() {});
-          }),
+          _input(
+            _company,
+            'Enter your company name',
+            onChanged: (_) {
+              setState(() {});
+            },
+          ),
           const SizedBox(height: 16),
           _label('Office pin code'),
           _input(
@@ -469,8 +476,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
                 if (cleaned != v) {
                   _email.value = TextEditingValue(
                     text: cleaned,
-                    selection:
-                        TextSelection.collapsed(offset: cleaned.length),
+                    selection: TextSelection.collapsed(offset: cleaned.length),
                   );
                 }
                 setState(() {});
@@ -493,12 +499,8 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
             child: Row(
               children: [
                 Icon(
-                  _noOfficeEmail
-                      ? Icons.check_circle
-                      : Icons.circle_outlined,
-                  color: _noOfficeEmail
-                      ? AppColors.accentMint
-                      : Colors.white70,
+                  _noOfficeEmail ? Icons.check_circle : Icons.circle_outlined,
+                  color: _noOfficeEmail ? AppColors.accentMint : Colors.white70,
                   size: 22,
                 ),
                 const SizedBox(width: 10),
@@ -599,7 +601,11 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
                         child: const CircleAvatar(
                           radius: 12,
                           backgroundColor: Colors.white,
-                          child: Icon(Icons.close, size: 14, color: Colors.black),
+                          child: Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
                     ),
@@ -659,17 +665,21 @@ class _CollegeDetailsScreenState extends ConsumerState<CollegeDetailsScreen> {
 
   Future<void> _submit() async {
     if (_college.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter college name')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter college name')));
       return;
     }
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
-      final customerId =
-          (await storage.read(StorageKeys.customerId))?.replaceAll('"', '');
-      await ref.read(dioClientProvider).dio.post(
+      final customerId = (await storage.read(
+        StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      await ref
+          .read(dioClientProvider)
+          .dio
+          .post(
             ApiEndpoints.storeEmpInfo,
             data: {
               'customer_id': customerId,

@@ -121,9 +121,9 @@ class ScreenStatusResolver {
   const ScreenStatusResolver();
 
   /// [userType] retained for callers; after equifax all types go to location.
-  /// When PL/DC is done, [kycComplete] gates DigiLocker vs home — RN biometric
-  /// called `VkycResponseCheck` and sent incomplete KYC to vkyc/Dkyc; Flutter
-  /// uses DigiLocker (`dkyc`) for all user types.
+  /// When PL/DC is done, [kycComplete] gates DigiLocker vs eNACH — DigiLocker
+  /// writes `vkyc_completed` (not `ocr_completed`), so KYC alone must still
+  /// force a mandate sized for the accepted offer before Home/funding.
   String resolve({
     required ScreenCompletionFlags flags,
     String? userType,
@@ -132,9 +132,8 @@ class ScreenStatusResolver {
   }) {
     if (flags.enach) return AppRoutes.home;
     if (flags.ocr) return AppRoutes.enach;
-    // RN biometric: pl/dc → VkycResponseCheck → home or vkyc/Dkyc.
     if (flags.pl || flags.dc) {
-      if (kycComplete) return AppRoutes.home;
+      if (kycComplete) return AppRoutes.enach;
       return AppRoutes.dkyc;
     }
     if (flags.addressSelection) return AppRoutes.waiting;

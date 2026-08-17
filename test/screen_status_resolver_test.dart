@@ -28,13 +28,13 @@ void main() {
     expect(route, AppRoutes.dkyc);
   });
 
-  test('pl_completed with KYC routes to home', () {
+  test('pl_completed with KYC routes to eNACH', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(pl: true),
       userType: 'Student',
       kycComplete: true,
     );
-    expect(route, AppRoutes.home);
+    expect(route, AppRoutes.enach);
   });
 
   test('dc_completed without KYC routes to DigiLocker', () {
@@ -45,10 +45,18 @@ void main() {
     expect(route, AppRoutes.dkyc);
   });
 
-  test('dc_completed with KYC routes to home', () {
+  test('dc_completed with KYC routes to eNACH', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(dc: true),
       userType: 'Salaried',
+      kycComplete: true,
+    );
+    expect(route, AppRoutes.enach);
+  });
+
+  test('pl + KYC + enach still routes to home', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(pl: true, enach: true),
       kycComplete: true,
     );
     expect(route, AppRoutes.home);

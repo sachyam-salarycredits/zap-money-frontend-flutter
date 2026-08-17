@@ -9,6 +9,15 @@ import '../../../core/constants/storage_keys.dart';
 import '../../../core/storage/session_storage.dart';
 import '../../authentication/presentation/providers/auth_providers.dart';
 
+class EmailVerificationException implements Exception {
+  const EmailVerificationException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class KycRepository {
   KycRepository(this._dio, this._storage);
 
@@ -231,7 +240,7 @@ class KycRepository {
 
   Future<void> sendEmailVerification(String email) async {
     final customerId = await _customerId();
-    await _dio.post(
+    final response = await _dio.post(
       ApiEndpoints.verifyUserEmail,
       data: {
         'customer_id': customerId,
@@ -239,6 +248,18 @@ class KycRepository {
       },
       options: Options(contentType: Headers.jsonContentType),
     );
+    final body = _asMap(response.data);
+    final status = body?['status']?.toString();
+    if (status != null && status != '200') {
+      final message = (body?['message'] ?? body?['msg'] ?? body?['error'])
+          ?.toString()
+          .trim();
+      throw EmailVerificationException(
+        message?.isNotEmpty == true
+            ? message!
+            : 'Could not send verification email',
+      );
+    }
   }
 
   static Map<String, dynamic>? _asMap(dynamic data) {

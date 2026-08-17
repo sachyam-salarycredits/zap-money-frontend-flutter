@@ -47,9 +47,9 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
   void _showError(String message) {
     if (!mounted) return;
     setState(() => _message = message);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _start() async {
@@ -87,8 +87,8 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
 
       final url = created?['url']?.toString();
       final verificationId = created?['verificationId']?.toString();
-      final status =
-          (created?['digilockerStatus']?.toString() ?? '').toUpperCase();
+      final status = (created?['digilockerStatus']?.toString() ?? '')
+          .toUpperCase();
 
       // Match RN: AUTHENTICATED session can complete without opening WebView.
       if (verificationId != null && status == 'AUTHENTICATED') {
@@ -138,8 +138,8 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
         final statusRes = await ref
             .read(kycRepositoryProvider)
             .digilockerPoll(verificationId: verificationId);
-        final status =
-            (statusRes?['digilockerStatus']?.toString() ?? '').toUpperCase();
+        final status = (statusRes?['digilockerStatus']?.toString() ?? '')
+            .toUpperCase();
         if (status == 'AUTHENTICATED') {
           _poller?.cancel();
           if (mounted) setState(() => _webUrl = null);
@@ -188,7 +188,8 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
       }
 
       final profile = await repo.getCustomerInfo();
-      final aadhaar = profile?['aadhaar_number']?.toString() ??
+      final aadhaar =
+          profile?['aadhaar_number']?.toString() ??
           profile?['aadhar_number']?.toString() ??
           '';
       final ok = await repo.uploadDkycFrontend(
@@ -201,10 +202,13 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
       }
       await ref.read(screenStatusServiceProvider).completeVkyc();
       ref.read(homeRefreshTickProvider.notifier).state++;
-      if (mounted) context.go(AppRoutes.home);
+      // KYC completion is followed by the mandate for the selected contract.
+      if (mounted) context.go(AppRoutes.enach);
     } catch (e) {
       if (kDebugMode) debugPrint('digilocker finish error → $e');
-      _showError('Unable to complete DigiLocker verification. Please try again.');
+      _showError(
+        'Unable to complete DigiLocker verification. Please try again.',
+      );
     } finally {
       _completing = false;
       ref.read(globalLoadingProvider.notifier).state = false;
