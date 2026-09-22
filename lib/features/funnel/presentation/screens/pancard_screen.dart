@@ -1,19 +1,18 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/constants/app_routes.dart';
+import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../../core/widgets/funnel_scaffold.dart';
 import '../../../authentication/presentation/providers/auth_providers.dart';
 
-/// New-flow PAN screen — PAN + wheel DOB, then `/PanDetails`.
+/// New-flow PAN screen — PAN 360 verifies identity and supplies DOB.
 class PancardScreen extends ConsumerStatefulWidget {
   const PancardScreen({super.key, this.userType});
 
@@ -27,24 +26,37 @@ class _PancardScreenState extends ConsumerState<PancardScreen> {
   final _pan = TextEditingController();
   final _panRegex = RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$');
 
-  late DateTime _dob;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _dob = DateTime(now.year - 18, now.month, now.day);
-  }
-
   @override
   void dispose() {
     _pan.dispose();
     super.dispose();
   }
 
-  DateTime get _maxDob {
-    final now = DateTime.now();
-    return DateTime(now.year - 18, now.month, now.day);
+  Future<String?> _customerId() async {
+    final raw = await ref
+        .read(sessionStorageProvider)
+        .read(StorageKeys.customerId);
+    final cleaned = raw?.replaceAll('"', '').trim();
+    if (cleaned == null || cleaned.isEmpty) return null;
+    return cleaned;
+  }
+
+  /// Returns error message if PAN is already linked to another customer.
+  Future<String?> _panAlreadyUsed(String pan) async {
+    final customerId = await _customerId();
+    final response = await ref
+        .read(dioClientProvider)
+        .dio
+        .post(
+          ApiEndpoints.checkCustomerUniqueness,
+          data: {'pan_number': pan, 'customer_id': ?customerId},
+          options: Options(contentType: Headers.jsonContentType),
+        );
+    final body = response.data;
+    if (body is Map && (body['status'] == 403 || body['status'] == '403')) {
+      return body['msg']?.toString() ?? 'Pan number is already exists.';
+    }
+    return null;
   }
 
   Future<void> _continue() async {
@@ -65,24 +77,39 @@ class _PancardScreenState extends ConsumerState<PancardScreen> {
       final data = response.data;
       final status = data is Map ? data['Statuscode'] : null;
       if (status != 200 && status != '200') {
-        _toast('Please provide valid PAN Number');
+        final message = data is Map ? data['Error']?.toString() : null;
+        _toast(message ?? 'Please provide valid PAN Number');
         return;
       }
 
-      final firstName =
-          data is Map ? (data['firstName']?.toString() ?? '') : '';
+      final duplicateMsg = await _panAlreadyUsed(value);
+      if (duplicateMsg != null) {
+        _toast(duplicateMsg);
+        return;
+      }
+
+      final firstName = data is Map
+          ? (data['firstName']?.toString() ?? '')
+          : '';
       final lastName = data is Map ? (data['lastName']?.toString() ?? '') : '';
+      final dob = data is Map ? (data['dob']?.toString() ?? '') : '';
+      if (dob.isEmpty || DateTime.tryParse(dob) == null) {
+        _toast('Date of birth could not be verified from PAN');
+        return;
+      }
 
       if (!mounted) return;
-      context.push(AppRoutes.personalInfo, extra: {
-        'userType': widget.userType ?? 'Salaried',
-        'pan': value,
-        'pan_number': value,
-        'firstname': firstName,
-        'lastname': lastName,
-        'date': _dob.toIso8601String(),
-        'dob': DateFormat('yyyy-MM-dd').format(_dob),
-      });
+      context.push(
+        AppRoutes.personalInfo,
+        extra: {
+          'userType': widget.userType ?? 'Salaried',
+          'pan': value,
+          'pan_number': value,
+          'firstname': firstName,
+          'lastname': lastName,
+          'dob': dob,
+        },
+      );
     } on DioException catch (e) {
       final msg = e.response?.data is Map
           ? (e.response!.data['Error'] ?? e.response!.data['msg'])?.toString()
@@ -132,41 +159,6 @@ class _PancardScreenState extends ConsumerState<PancardScreen> {
             ],
             decoration: _fieldDecoration('Enter your 10 digit PAN no.'),
           ),
-          const SizedBox(height: 28),
-          Text(
-            'Date of Birth',
-            style: AppTypography.body(size: 14, weight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 140,
-            child: Localizations.override(
-              context: context,
-              locale: const Locale('en', 'US'),
-              child: CupertinoTheme(
-                data: const CupertinoThemeData(
-                  brightness: Brightness.dark,
-                  primaryColor: Colors.white,
-                  textTheme: CupertinoTextThemeData(
-                    dateTimePickerTextStyle: TextStyle(
-                      fontFamily: AppTypography.family,
-                      color: Colors.white,
-                      fontSize: 18,
-                    ),
-                  ),
-                ),
-                child: CupertinoDatePicker(
-                  mode: CupertinoDatePickerMode.date,
-                  initialDateTime:
-                      _dob.isAfter(_maxDob) ? _maxDob : _dob,
-                  minimumDate: DateTime(1900, 1, 1),
-                  maximumDate: _maxDob,
-                  dateOrder: DatePickerDateOrder.dmy,
-                  onDateTimeChanged: (d) => setState(() => _dob = d),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -179,8 +171,7 @@ class _PancardScreenState extends ConsumerState<PancardScreen> {
       hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
       filled: true,
       fillColor: const Color(0xFF2A0A5C),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,

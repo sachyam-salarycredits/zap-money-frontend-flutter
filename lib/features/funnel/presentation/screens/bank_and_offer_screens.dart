@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +10,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/services/finarkein_ingest_service.dart';
 import '../../../../core/services/screen_status_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
@@ -423,6 +422,7 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
   }
 }
 
+
 class BankStatementScreen extends ConsumerStatefulWidget {
   const BankStatementScreen({super.key, this.args});
 
@@ -433,455 +433,61 @@ class BankStatementScreen extends ConsumerStatefulWidget {
       _BankStatementScreenState();
 }
 
-class _PickedPdf {
-  const _PickedPdf({
-    required this.path,
-    required this.name,
-    required this.mime,
-  });
-
-  final String path;
-  final String name;
-  final String mime;
-}
-
 class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
-  /// RN: Monthly vs Single File
-  bool _monthly = true;
-  _PickedPdf? _month1;
-  _PickedPdf? _month2;
-  _PickedPdf? _month3;
-  _PickedPdf? _singleFile;
-  final _password = TextEditingController();
-  String _userType = 'Salaried';
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final type = await ref
-          .read(sessionStorageProvider)
-          .read(StorageKeys.userType);
-      if (!mounted) return;
-      setState(() {
-        _userType = (type ?? 'Salaried').replaceAll('"', '');
-      });
-    });
-  }
-
-  String? get _bankcode {
+  String? get _bankName {
     final args = widget.args;
     if (args == null) return null;
-    final nested = args['bankDetails'];
-    if (nested is Map) return nested['bankcode']?.toString();
-    return args['bankcode']?.toString();
-  }
-
-  @override
-  void dispose() {
-    _password.dispose();
-    super.dispose();
-  }
-
-  bool get _canSubmit {
-    if (_monthly) {
-      return _month1 != null && _month2 != null && _month3 != null;
-    }
-    return _singleFile != null;
-  }
-
-  Future<void> _pickPdf(void Function(_PickedPdf file) assign) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['pdf'],
-        withData: false,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
-      final path = file.path;
-      if (path == null || path.isEmpty) {
-        _toast('Could not read selected file');
-        return;
-      }
-      final name = file.name;
-      if (!name.toLowerCase().endsWith('.pdf') &&
-          (file.extension?.toLowerCase() != 'pdf')) {
-        _toast('Please Select pdf file only');
-        return;
-      }
-      // RN: 3MB limit
-      if (file.size > 3000000) {
-        _toast('File size exceeds the limit 3MB');
-        return;
-      }
-      setState(
-        () => assign(
-          _PickedPdf(
-            path: path,
-            name: name.isEmpty ? 'statement.pdf' : name,
-            mime: 'application/pdf',
-          ),
-        ),
-      );
-    } catch (_) {
-      _toast('Could not open file picker. Please try again.');
-    }
-  }
-
-  Future<void> _completeAndContinue() async {
-    if (!_canSubmit) {
-      _toast('Please upload bank statement PDF(s)');
-      return;
-    }
-    ref.read(globalLoadingProvider.notifier).state = true;
-    try {
-      final storage = ref.read(sessionStorageProvider);
-      final customerId = (await storage.read(
-        StorageKeys.customerId,
-      ))?.replaceAll('"', '');
-      final sfCustomerId = (await storage.read(
-        StorageKeys.sfCustomerId,
-      ))?.replaceAll('"', '');
-      if (customerId == null || customerId.isEmpty) {
-        _toast('Missing customer id — please re-login');
-        return;
-      }
-      final bankcode = _bankcode ?? '';
-      final password = _password.text.trim();
-
-      // RN uploadBankStatement → multipart /uploadFinbitBankStatement
-      final map = <String, dynamic>{
-        'customerId': customerId,
-        'sf_customerId': sfCustomerId ?? '',
-        'isMultipleStmt': _monthly ? 'True' : 'False',
-      };
-
-      Future<void> appendStmt({
-        required String index,
-        required _PickedPdf pdf,
-        required String passwordKey,
-      }) async {
-        map['bankStmt_$index'] = await MultipartFile.fromFile(
-          pdf.path,
-          filename: pdf.name,
-        );
-        map['accountType_$index'] = 'SAVING';
-        map['bankCode_$index'] = bankcode;
-        if (password.isNotEmpty) {
-          map[passwordKey] = password;
-        }
-      }
-
-      if (_monthly) {
-        await appendStmt(index: '1', pdf: _month1!, passwordKey: 'password_1');
-        await appendStmt(index: '2', pdf: _month2!, passwordKey: 'password_2');
-        await appendStmt(index: '3', pdf: _month3!, passwordKey: 'password_3');
-      } else {
-        await appendStmt(
-          index: '1',
-          pdf: _singleFile!,
-          passwordKey: 'password_1',
-        );
-      }
-
-      final form = FormData.fromMap(map);
-      final response = await ref
-          .read(dioClientProvider)
-          .dio
-          .post(
-            ApiEndpoints.uploadFinbitBankStatement,
-            data: form,
-            options: Options(
-              sendTimeout: const Duration(minutes: 2),
-              receiveTimeout: const Duration(minutes: 2),
-            ),
-          );
-
-      final data = response.data;
-      final status = data is Map ? data['Status'] ?? data['status'] : null;
-      if (status == 200 || status == '200') {
-        await ref.read(screenStatusServiceProvider).completeBank();
-        await ref.read(screenStatusServiceProvider).completeFinbit();
-        if (mounted) context.go(AppRoutes.residenceAddress);
-        return;
-      }
-      final err = data is Map
-          ? (data['error'] ?? data['msg'] ?? data['message'])?.toString()
-          : null;
-      _toast(err ?? 'Bank statement upload failed');
-    } on DioException catch (e) {
-      final data = e.response?.data;
-      final err = data is Map
-          ? (data['error'] ?? data['msg'] ?? data['message'])?.toString()
-          : null;
-      _toast(err ?? 'Bank statement upload failed');
-    } catch (_) {
-      _toast('Could not upload bank statement');
-    } finally {
-      ref.read(globalLoadingProvider.notifier).state = false;
-    }
-  }
-
-  void _toast(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    return args['bankName']?.toString() ??
+        (args['bankDetails'] is Map
+            ? (args['bankDetails'] as Map)['bankName']?.toString()
+            : null);
   }
 
   @override
   Widget build(BuildContext context) {
-    final loading = ref.watch(globalLoadingProvider);
-    final bankName =
-        widget.args?['bankName']?.toString() ??
-        (widget.args?['bankDetails'] is Map
-            ? (widget.args!['bankDetails'] as Map)['bankName']?.toString()
-            : null);
-
     return FunnelScaffold(
-      title: _bankAccountDetailsTitle(_userType),
+      title: 'Account\nAggregator',
       totalSteps: 3,
-      activeStep: 3,
+      activeStep: 2,
       heroAsset: 'assets/images/bankdoc.png',
       heroHeight: 110,
-      bottom: ZapSubmitButton(
-        title: _monthly ? 'Continue' : 'Submit',
-        disabled: !_canSubmit || loading,
-        onPressed: _completeAndContinue,
-      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         children: [
-          if (bankName != null && bankName.isNotEmpty)
+          if (_bankName != null && _bankName!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
-                bankName,
+                _bankName!,
                 style: AppTypography.body(size: 13, color: AppColors.muted),
               ),
             ),
+          Text(
+            'Validate your bank account via Account Aggregator',
+            style: AppTypography.body(size: 13),
+          ),
+          const SizedBox(height: 16),
           ZapSubmitButton(
-            title: 'Login to your Bank Account',
+            title: 'Continue with Account Aggregator',
             onPressed: () {
               context.push(
                 AppRoutes.finbit,
                 extra: {
-                  'bankDetails': {'bankcode': _bankcode, 'bankName': bankName},
-                  'bankcode': _bankcode,
-                  'bankName': bankName,
+                  'bankDetails': {
+                    'bankName': _bankName,
+                  },
+                  'bankName': _bankName,
                 },
               );
             },
           ),
-          const SizedBox(height: 8),
-          Center(child: Text('OR', style: AppTypography.body(size: 15))),
-          const SizedBox(height: 16),
-          Text(
-            'Upload your Bank Statement as (PDF Only)',
-            style: AppTypography.body(size: 13),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _modeChip('Monthly', _monthly, () {
-                setState(() {
-                  _monthly = true;
-                  _singleFile = null;
-                });
-              }),
-              const SizedBox(width: 16),
-              _modeChip('Single File', !_monthly, () {
-                setState(() {
-                  _monthly = false;
-                  _month1 = null;
-                  _month2 = null;
-                  _month3 = null;
-                });
-              }),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_monthly)
-            Row(
-              children: [
-                Expanded(
-                  child: _pdfTile(
-                    label: 'Month 1',
-                    file: _month1,
-                    onPick: () => _pickPdf((p) => _month1 = p),
-                    onClear: () => setState(() => _month1 = null),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _pdfTile(
-                    label: 'Month 2',
-                    file: _month2,
-                    onPick: () => _pickPdf((p) => _month2 = p),
-                    onClear: () => setState(() => _month2 = null),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _pdfTile(
-                    label: 'Month 3',
-                    file: _month3,
-                    onPick: () => _pickPdf((p) => _month3 = p),
-                    onClear: () => setState(() => _month3 = null),
-                  ),
-                ),
-              ],
-            )
-          else
-            _pdfTile(
-              label: 'Upload for PDF',
-              file: _singleFile,
-              tall: true,
-              onPick: () => _pickPdf((p) => _singleFile = p),
-              onClear: () => setState(() => _singleFile = null),
-            ),
-          const SizedBox(height: 16),
-          Text(
-            'File Password (If Any)',
-            style: AppTypography.body(size: 12, color: AppColors.muted),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _password,
-            obscureText: true,
-            cursorColor: Colors.white,
-            style: AppTypography.body(size: 16),
-            decoration: InputDecoration(
-              hintText: 'Enter your password ',
-              hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
-              filled: true,
-              fillColor: const Color(0xFF2A0A5C),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
         ],
-      ),
-    );
-  }
-
-  Widget _modeChip(String label, bool selected, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            selected ? Icons.radio_button_checked : Icons.radio_button_off,
-            color: selected ? AppColors.accentMint : Colors.white70,
-            size: 20,
-          ),
-          const SizedBox(width: 6),
-          Text(label, style: AppTypography.body(size: 14)),
-        ],
-      ),
-    );
-  }
-
-  Widget _pdfTile({
-    required String label,
-    required _PickedPdf? file,
-    required VoidCallback onPick,
-    required VoidCallback onClear,
-    bool tall = false,
-  }) {
-    final path = file?.path;
-    return AspectRatio(
-      aspectRatio: tall ? 2.2 : 0.85,
-      child: InkWell(
-        onTap: onPick,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF3E1982),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white24),
-          ),
-          child: path == null
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Upload for',
-                      style: AppTypography.body(
-                        size: 10,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    const Icon(
-                      Icons.upload,
-                      color: Color(0xFFAC9FC6),
-                      size: 20,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      label,
-                      textAlign: TextAlign.center,
-                      style: AppTypography.body(
-                        size: 11,
-                        color: const Color(0xFFAC9FC6),
-                      ),
-                    ),
-                  ],
-                )
-              : Stack(
-                  children: [
-                    Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.picture_as_pdf,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                          const SizedBox(height: 6),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: Text(
-                              file?.name ?? path.split('/').last,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: AppTypography.body(size: 10),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: InkWell(
-                        onTap: onClear,
-                        child: const CircleAvatar(
-                          radius: 10,
-                          backgroundColor: Colors.white,
-                          child: Icon(
-                            Icons.close,
-                            size: 12,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-        ),
       ),
     );
   }
 }
 
-/// RN Finbit / net-banking path opened from salary account details.
-/// "Login to Net banking" must open Finbit WebView — not skip to residence.
+/// Finarkein AA consent journey (replaces Finbit WebView accountUID bridge).
 class FinbitScreen extends ConsumerStatefulWidget {
   const FinbitScreen({super.key, this.args});
 
@@ -893,159 +499,189 @@ class FinbitScreen extends ConsumerStatefulWidget {
 
 class _FinbitScreenState extends ConsumerState<FinbitScreen> {
   bool _webviewVisible = false;
-  String? _finbitUrl;
+  String? _requestId;
   WebViewController? _controller;
-  var _handlingMessage = false;
+  var _consentReturnHandled = false;
+  var _sawConsentReturn = false;
 
-  /// RN `AppConstant.INJECTED_JAVASCRIPT` + Flutter channel polyfill.
-  static const _injectedJs = '''
-(function() {
-  if (!window.ReactNativeWebView) {
-    window.ReactNativeWebView = {
-      postMessage: function(msg) {
-        if (window.FinbitBridge && window.FinbitBridge.postMessage) {
-          window.FinbitBridge.postMessage(
-            typeof msg === 'string' ? msg : JSON.stringify(msg)
-          );
-        }
-      }
-    };
-  }
-  if (window.addEventListener) {
-    window.addEventListener("message", handlePostMessage, false);
-  } else {
-    window.attachEvent("onmessage", handlePostMessage);
-  }
-  function handlePostMessage(obj) {
-    if (obj.data && obj.data != null && obj.data != "") {
-      window.ReactNativeWebView.postMessage(
-        typeof obj.data === 'string' ? obj.data : JSON.stringify(obj.data)
-      );
-    }
-  }
-})();
-''';
-
-  String? get _bankcode {
-    final args = widget.args;
-    if (args == null) return null;
-    final nested = args['bankDetails'];
-    if (nested is Map) {
-      return nested['bankcode']?.toString();
-    }
-    return args['bankcode']?.toString();
+  /// Finarkein post-consent landing (thank-you) or our custom return URL.
+  bool _isConsentReturnUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    final lower = url.toLowerCase();
+    return lower.contains('thank-you') ||
+        lower.contains('/o/thank') ||
+        lower.contains('finarkein-return') ||
+        lower.contains('thankyou') ||
+        // Local Finarkein mock — no real AA WebView journey.
+        lower.contains('mock=1') ||
+        lower.contains('/mock/') ||
+        // Finarkein UAT thank-you host paths
+        (lower.contains('fnrk.in') && lower.contains('thank'));
   }
 
-  Future<void> _openNetBanking() async {
-    ref.read(globalLoadingProvider.notifier).state = true;
-    try {
-      final response = await ref
-          .read(dioClientProvider)
-          .dio
-          .post(
-            ApiEndpoints.getFinbitUrl,
-            data: {'bankcode': _bankcode ?? ''},
-            options: Options(contentType: Headers.jsonContentType),
-          );
-      final root = response.data;
-      String? url;
-      if (root is Map) {
-        final data = root['data'];
-        if (data is String) {
-          url = data;
-        } else if (data is Map) {
-          url = data['url']?.toString() ?? data['data']?.toString();
-        } else {
-          url = root['url']?.toString();
-        }
-      } else if (root is String) {
-        url = root;
-      }
-      if (url == null || url.isEmpty) {
-        _toast('Could not open bank login. Please try again.');
-        return;
-      }
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..addJavaScriptChannel(
-          'FinbitBridge',
-          onMessageReceived: (message) {
-            unawaited(_onWebMessage(message.message));
-          },
-        )
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageFinished: (_) async {
-              await _controller?.runJavaScript(_injectedJs);
-            },
-          ),
-        )
-        ..loadRequest(Uri.parse(url));
-      if (!mounted) return;
-      setState(() {
-        _finbitUrl = url;
-        _controller = controller;
-        _webviewVisible = true;
-      });
-    } catch (_) {
-      _toast('Could not open bank login. Please try again.');
-    } finally {
-      ref.read(globalLoadingProvider.notifier).state = false;
-    }
+  bool _isMockFinarkeinRun(String? requestId, String? redirectUrl) {
+    final id = (requestId ?? '').toLowerCase();
+    if (id.startsWith('mock-')) return true;
+    final lower = (redirectUrl ?? '').toLowerCase();
+    return lower.contains('mock=1') || lower.contains('/mock/');
   }
 
-  Future<void> _onWebMessage(String raw) async {
-    if (_handlingMessage) return;
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(raw);
-      // RN: sometimes double-encoded / nested
-      if (decoded is String) {
-        decoded = jsonDecode(decoded);
-      }
-    } catch (_) {
+  void _handleConsentReturnUrl(String? url) {
+    if (!_isConsentReturnUrl(url)) return;
+    _sawConsentReturn = true;
+    unawaited(_onConsentReturned());
+  }
+
+  /// Advance to Residence only after Finarkein reports consent approved.
+  /// Thank-you URL / “I finished” are hints — never sufficient alone.
+  Future<void> _onConsentReturned() async {
+    if (_consentReturnHandled) return;
+    _consentReturnHandled = true;
+    final requestId = _requestId;
+    if (!mounted) return;
+    setState(() => _webviewVisible = false);
+
+    if (requestId == null || requestId.isEmpty) {
+      _consentReturnHandled = false;
+      _toast('Bank validation is not complete. Please try again.');
       return;
     }
-    String? accountUid;
-    if (decoded is Map) {
-      final data = decoded['data'];
-      if (data is List && data.isNotEmpty && data.first is Map) {
-        accountUid = (data.first as Map)['accountUID']?.toString();
-      } else if (data is Map) {
-        accountUid = data['accountUID']?.toString();
-      } else {
-        accountUid = decoded['accountUID']?.toString();
+
+    final ingest = ref.read(finarkeinIngestServiceProvider);
+    ref.read(globalLoadingProvider.notifier).state = true;
+    var approved = false;
+    try {
+      approved = await ingest.waitUntilConsentApproved(requestId: requestId);
+    } finally {
+      if (mounted) {
+        ref.read(globalLoadingProvider.notifier).state = false;
       }
     }
-    if (accountUid == null || accountUid.isEmpty) return;
 
-    _handlingMessage = true;
+    if (!approved) {
+      // Allow retry — user may still be on OTP or abandoned mid-journey.
+      _consentReturnHandled = false;
+      _sawConsentReturn = false;
+      if (!mounted) return;
+      _toast(
+        'Consent not completed yet. Open bank validation again after approving.',
+      );
+      return;
+    }
+
+    _sawConsentReturn = true;
+    // Consent approved — ingest continues in background while user fills residence.
+    try {
+      await ref.read(screenStatusServiceProvider).completeBank();
+    } catch (_) {}
+    ingest.startBackground(requestId);
+    if (!mounted) return;
+    context.go(AppRoutes.residenceAddress);
+  }
+
+  /// AppBar / system back: if thank-you already hit, verify consent then
+  /// continue; otherwise only close the WebView (no Residence advance).
+  Future<void> _onWebViewBack() async {
+    if (_consentReturnHandled) return;
+    if (_sawConsentReturn) {
+      await _onConsentReturned();
+      return;
+    }
+    try {
+      final current = await _controller?.currentUrl();
+      if (_isConsentReturnUrl(current)) {
+        await _onConsentReturned();
+        return;
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _webviewVisible = false);
+  }
+
+  Future<void> _openFinarkein() async {
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
       final customerId = (await storage.read(
         StorageKeys.customerId,
       ))?.replaceAll('"', '');
-      await ref
+      final response = await ref
           .read(dioClientProvider)
           .dio
           .post(
-            ApiEndpoints.finbitBankVerification,
+            ApiEndpoints.finarkeinConsentInitiate,
             data: {
-              'customerid': int.tryParse(customerId ?? '') ?? customerId,
-              'accoundUID': accountUid, // RN typo preserved
+              if (customerId != null && customerId.isNotEmpty)
+                'customer_id': int.tryParse(customerId) ?? customerId,
             },
-            options: Options(contentType: Headers.jsonContentType),
+            options: Options(
+              contentType: Headers.jsonContentType,
+              extra: {'useBearer': true},
+            ),
           );
-      // RN: complete bank + finbit, then residence
-      await ref.read(screenStatusServiceProvider).completeBank();
-      await ref.read(screenStatusServiceProvider).completeFinbit();
+      final root = response.data;
+      Map? payload;
+      if (root is Map) {
+        final resp = root['response'];
+        payload = resp is Map ? resp : root;
+      }
+      final requestId = payload?['request_id']?.toString();
+      final redirectUrl = payload?['redirect_url']?.toString();
+      if (requestId == null ||
+          requestId.isEmpty ||
+          redirectUrl == null ||
+          redirectUrl.isEmpty) {
+        _toast('Could not start bank validation. Please try again.');
+        return;
+      }
+      _consentReturnHandled = false;
+      _sawConsentReturn = false;
+      _requestId = requestId;
+      unawaited(
+        ref.read(finarkeinIngestServiceProvider).persistRequestId(requestId),
+      );
+
+      // Mock / already-on-return URL: skip blank WebView and continue funnel.
+      if (_isMockFinarkeinRun(requestId, redirectUrl)) {
+        await _onConsentReturned();
+        return;
+      }
+
+      final controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onNavigationRequest: (request) {
+              if (_isConsentReturnUrl(request.url)) {
+                _sawConsentReturn = true;
+                unawaited(_onConsentReturned());
+                // Stay in-app; no need to render Finarkein thank-you.
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            },
+            onUrlChange: (change) {
+              _handleConsentReturnUrl(change.url);
+            },
+            onPageStarted: _handleConsentReturnUrl,
+            onPageFinished: _handleConsentReturnUrl,
+          ),
+        )
+        ..loadRequest(Uri.parse(redirectUrl));
       if (!mounted) return;
-      setState(() => _webviewVisible = false);
-      context.go(AppRoutes.residenceAddress);
+      setState(() {
+        _controller = controller;
+        _webviewVisible = true;
+      });
+      return;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final err = data is Map
+          ? (data['message'] ?? data['msg'] ?? data['error'])?.toString()
+          : null;
+      _toast(err ?? 'Could not start bank validation. Please try again.');
     } catch (_) {
-      _handlingMessage = false;
-      _toast('Bank verification failed. Please try again.');
+      _toast('Could not start bank validation. Please try again.');
     } finally {
       ref.read(globalLoadingProvider.notifier).state = false;
     }
@@ -1058,71 +694,100 @@ class _FinbitScreenState extends ConsumerState<FinbitScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final verifyingConsent = ref.watch(globalLoadingProvider);
+
     if (_webviewVisible && _controller != null) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) unawaited(_onWebViewBack());
+        },
+        child: Scaffold(
           backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => setState(() => _webviewVisible = false),
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => unawaited(_onWebViewBack()),
+            ),
+            title: Text(
+              'Bank validation',
+              style: AppTypography.headline(
+                size: 16,
+              ).copyWith(color: Colors.black),
+            ),
           ),
-          title: Text(
-            'Bank login',
-            style: AppTypography.headline(
-              size: 16,
-            ).copyWith(color: Colors.black),
-          ),
+          body: WebViewWidget(controller: _controller!),
         ),
-        body: WebViewWidget(controller: _controller!),
       );
     }
+
+    final hasStartedAa = _requestId != null && _requestId!.isNotEmpty;
 
     return FunnelScaffold(
       title: 'Bank account\nValidation',
       showBack: true,
       totalSteps: 3,
       activeStep: 3,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      child: Stack(
         children: [
-          Text('Use Net Banking', style: AppTypography.headline(size: 18)),
-          const SizedBox(height: 10),
-          Text(
-            'Login to your Net banking to validate\nyour bank account details',
-            style: AppTypography.body(size: 12, color: AppColors.muted),
-          ),
-          const SizedBox(height: 20),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              width: 200,
-              child: ZapSubmitButton(
-                title: 'Login to Net banking',
-                onPressed: _openNetBanking,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
+          ListView(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
             children: [
-              Icon(Icons.timer_outlined, size: 18, color: AppColors.muted),
-              const SizedBox(width: 10),
               Text(
-                'Takes Just 30 Seconds',
+                'Use Account Aggregator',
+                style: AppTypography.headline(size: 18),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Securely share your bank statement data\nto validate your account',
                 style: AppTypography.body(size: 12, color: AppColors.muted),
               ),
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: 260,
+                  child: ZapSubmitButton(
+                    title: hasStartedAa
+                        ? 'Open bank validation again'
+                        : 'Continue',
+                    disabled: verifyingConsent,
+                    onPressed: _openFinarkein,
+                  ),
+                ),
+              ),
+              if (hasStartedAa) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: 260,
+                    child: OutlinedButton(
+                      onPressed: verifyingConsent
+                          ? null
+                          : () => unawaited(_onConsentReturned()),
+                      child: const Text('I finished — continue'),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'After you approve consent in the bank screen, you move to address automatically. If the screen stays here, finish consent first, then tap “I finished — continue”.',
+                  style: AppTypography.body(size: 11, color: AppColors.muted),
+                ),
+              ],
             ],
           ),
-          if (_finbitUrl != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              'If the browser closed early, tap Login again.',
-              style: AppTypography.body(size: 11, color: AppColors.muted),
+          if (verifyingConsent)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x66FFFFFF),
+                child: Center(child: CircularProgressIndicator()),
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -1349,7 +1014,28 @@ class _ResidenceAddressScreenState
       await ref.read(screenStatusServiceProvider).completeAddress();
       // RN ResidenceAddress focus marks bankdetails_verified.
       await ref.read(screenStatusServiceProvider).completeBankVerified();
-      if (mounted) context.go(AppRoutes.waiting);
+      // First-time: employer after residence, then Waiting.
+      // Repeat loan already collected employer before bank/AA — skip the
+      // second Employer details prompt and go straight to credit decision.
+      var employerDone = false;
+      try {
+        final bundle = await ref
+            .read(homeRepositoryProvider)
+            .fetchHomeBundle();
+        employerDone = bundle.flags.employerDetails;
+      } catch (_) {
+        // Fall through to employer when flags cannot be loaded.
+      }
+      if (mounted) {
+        if (employerDone) {
+          context.go(AppRoutes.waiting);
+        } else {
+          context.go(
+            AppRoutes.employerDetails,
+            extra: const {'isFrom': 'postResidence'},
+          );
+        }
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1359,6 +1045,16 @@ class _ResidenceAddressScreenState
     } finally {
       ref.read(globalLoadingProvider.notifier).state = false;
     }
+  }
+
+  Widget _label(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text,
+        style: AppTypography.body(size: 12, color: AppColors.muted),
+      ),
+    );
   }
 
   Widget _field({
@@ -1396,7 +1092,7 @@ class _ResidenceAddressScreenState
   @override
   Widget build(BuildContext context) {
     return FunnelScaffold(
-      title: 'Residence address',
+      title: 'Residence Address',
       bottom: ZapSubmitButton(
         title: 'Continue',
         disabled: _lookingUpPin,
@@ -1405,11 +1101,13 @@ class _ResidenceAddressScreenState
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _field(controller: _address, hint: 'Full address', maxLines: 3),
-          const SizedBox(height: 12),
+          _label('Full Address*'),
+          _field(controller: _address, hint: 'Enter full address', maxLines: 3),
+          const SizedBox(height: 16),
+          _label('Pincode*'),
           _field(
             controller: _postal,
-            hint: 'Pincode',
+            hint: 'Enter pincode',
             keyboard: TextInputType.number,
             maxLength: 6,
             onChanged: _onPostalChanged,
@@ -1424,14 +1122,18 @@ class _ResidenceAddressScreenState
                   )
                 : null,
           ),
-          const SizedBox(height: 12),
-          _field(controller: _city, hint: 'City'),
-          const SizedBox(height: 12),
-          _field(controller: _state, hint: 'State'),
-          const SizedBox(height: 12),
-          _field(controller: _locality, hint: 'Locality'),
-          const SizedBox(height: 12),
-          _field(controller: _sublocality, hint: 'Sublocality'),
+          const SizedBox(height: 16),
+          _label('City*'),
+          _field(controller: _city, hint: 'Enter city'),
+          const SizedBox(height: 16),
+          _label('State*'),
+          _field(controller: _state, hint: 'Enter state'),
+          const SizedBox(height: 16),
+          _label('Locality'),
+          _field(controller: _locality, hint: 'Enter locality'),
+          const SizedBox(height: 16),
+          _label('Sublocality'),
+          _field(controller: _sublocality, hint: 'Enter sublocality'),
         ],
       ),
     );
@@ -1453,6 +1155,8 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
   String? _error;
   bool _running = false;
   bool _repeatLoan = false;
+  /// Shown under the title while polling / running CD.
+  String _statusMessage = 'We are preparing your credit decision…';
 
   @override
   void initState() {
@@ -1524,6 +1228,7 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
     setState(() {
       _running = true;
       _error = null;
+      _statusMessage = 'We are preparing your credit decision…';
     });
 
     try {
@@ -1548,8 +1253,46 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
         }
       }
 
+      // AA consent may finish before Finarkein ingest. If we have a run id,
+      // do not call CD until READY — otherwise CD creates REF (manager review).
+      // Keep the wait short for UX; Retry if still processing (background sync
+      // already ran during residence + employer).
+      final ingest = ref.read(finarkeinIngestServiceProvider);
+      final finarkeinRequestId = await ingest.readRequestId();
+      if (finarkeinRequestId != null && finarkeinRequestId.isNotEmpty) {
+        if (mounted) {
+          setState(
+            () => _statusMessage = 'Confirming your bank data…',
+          );
+        }
+        bool ready = false;
+        try {
+          ready = await ingest.waitUntilReady(
+            requestId: finarkeinRequestId,
+            maxWait: const Duration(seconds: 60),
+            interval: const Duration(seconds: 5),
+          );
+        } catch (_) {
+          ready = false;
+        }
+        if (!ready) {
+          if (!mounted) return;
+          setState(
+            () => _error =
+                'Your bank data is still processing. Tap Retry in a moment — we will not run a decision until it is ready.',
+          );
+          return;
+        }
+      }
+
+      if (mounted) {
+        setState(
+          () => _statusMessage = 'We are running your credit decision…',
+        );
+      }
+
       // CD can sleep ~30s waiting for Finbit name-match; allow retries.
-      const attempts = 3;
+      const attempts = 5;
       String? lastDetail;
 
       for (var i = 0; i < attempts; i++) {
@@ -1635,7 +1378,7 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
     return FunnelScaffold(
       title: 'Hang tight',
       subtitle: _error == null
-          ? 'We are running your credit decision…'
+          ? _statusMessage
           : 'Credit decision needs another try',
       showBack: false,
       bottom: _error == null
@@ -1649,7 +1392,23 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: _error == null
-              ? const CircularProgressIndicator(color: AppColors.accentMint)
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: AppColors.accentMint,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _statusMessage,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.body(
+                        size: 14,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ],
+                )
               : Text(
                   _error!,
                   textAlign: TextAlign.center,

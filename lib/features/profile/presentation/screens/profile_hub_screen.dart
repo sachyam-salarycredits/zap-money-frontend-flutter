@@ -172,17 +172,60 @@ class _ProfileHubScreenState extends ConsumerState<ProfileHubScreen> {
                 if (_error != null)
                   Text(_error!, style: AppTypography.body(size: 14)),
                 Center(
-                  child: CircleAvatar(
-                    radius: 56,
-                    backgroundColor: const Color(0xFF3E1982),
-                    backgroundImage:
-                        photo != null && photo.isNotEmpty ? NetworkImage(photo) : null,
-                    child: photo == null || photo.isEmpty
-                        ? Text(
-                            (name.isNotEmpty ? name[0] : '?').toUpperCase(),
-                            style: AppTypography.headline(size: 32),
-                          )
-                        : null,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () async {
+                            final updated = await context.push<bool>(
+                              AppRoutes.profileImageSelect,
+                            );
+                            if (updated == true && mounted) {
+                              await _load();
+                            }
+                          },
+                          customBorder: const CircleBorder(),
+                          child: CircleAvatar(
+                            radius: 56,
+                            backgroundColor: const Color(0xFF3E1982),
+                            backgroundImage: photo != null && photo.isNotEmpty
+                                ? NetworkImage(photo)
+                                : null,
+                            child: photo == null || photo.isEmpty
+                                ? Text(
+                                    (name.isNotEmpty ? name[0] : '?')
+                                        .toUpperCase(),
+                                    style: AppTypography.headline(size: 32),
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF80FFDB),
+                                Color(0xFF4747E7),
+                              ],
+                            ),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Image.asset(
+                            'assets/images/profile/editProfile.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),

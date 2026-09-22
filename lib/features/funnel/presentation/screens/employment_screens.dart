@@ -376,7 +376,9 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       if (!mounted) return;
       // Unlock path (and RN default post-employer): re-run CD on Waiting.
       // Mid-funnel / profile edit still lands on bank when not unlocking.
-      if (widget.isFrom == 'unlockOffer') {
+      if (widget.isFrom == 'unlockOffer' ||
+          widget.isFrom == 'postResidence') {
+        // After residence (first-time) or unlock: run CD on Waiting.
         context.go(AppRoutes.waiting);
       } else if (widget.isFrom == 'repeatLoan') {
         // A repeat application needs a newly uploaded income document before
@@ -388,7 +390,8 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       } else if (widget.isFrom == 'editProfile') {
         context.go(AppRoutes.profile);
       } else {
-        context.go(AppRoutes.bankDetails);
+        // Legacy mid-funnel entry: skip IFSC/AA intro → Finarkein.
+        context.go(AppRoutes.finbit);
       }
     } catch (_) {
       _toast('Could not save employer details');
@@ -689,7 +692,7 @@ class _CollegeDetailsScreenState extends ConsumerState<CollegeDetailsScreen> {
             options: Options(contentType: Headers.jsonContentType),
           );
       await ref.read(screenStatusServiceProvider).completeCollege();
-      if (mounted) context.go(AppRoutes.bankDetails);
+      if (mounted) context.go(AppRoutes.finbit);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -41,8 +41,9 @@ class _LocationPermissionScreenState
         // The bank refresh remains safe if Home cannot be loaded.
       }
       if (!mounted) return;
+      // Skip manual Salary Account Details — AA (Finarkein) supplies bank info.
       context.go(
-        repeatLoan ? AppRoutes.employerDetails : AppRoutes.bankDetails,
+        repeatLoan ? AppRoutes.employerDetails : AppRoutes.finbit,
         extra: repeatLoan ? const {'isFrom': 'repeatLoan'} : null,
       );
     }

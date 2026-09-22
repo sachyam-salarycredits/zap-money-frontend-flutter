@@ -27,11 +27,17 @@ class CreditDecisionSummary {
     this.status,
     this.maxLoanAmount,
     this.minLoanAmount,
+    this.loanRequestStatus,
+    this.requestedAmount,
+    this.approvedAmount,
   });
 
   final String? status;
   final double? maxLoanAmount;
   final double? minLoanAmount;
+  final String? loanRequestStatus;
+  final double? requestedAmount;
+  final double? approvedAmount;
 
   factory CreditDecisionSummary.fromJson(Map<String, dynamic> json) {
     double? asDouble(dynamic v) {
@@ -39,10 +45,18 @@ class CreditDecisionSummary {
       return double.tryParse(v?.toString() ?? '');
     }
 
+    final loanRequestRaw = json['loan_request'];
+    final loanRequest = loanRequestRaw is Map
+        ? Map<String, dynamic>.from(loanRequestRaw)
+        : null;
+
     return CreditDecisionSummary(
       status: json['status']?.toString(),
       maxLoanAmount: asDouble(json['max_loan_amount']),
       minLoanAmount: asDouble(json['min_loan_amount']),
+      loanRequestStatus: loanRequest?['status']?.toString(),
+      requestedAmount: asDouble(loanRequest?['requested_amount']),
+      approvedAmount: asDouble(loanRequest?['approved_amount']),
     );
   }
 }
@@ -66,6 +80,18 @@ class HomeRepository {
   Future<String?> _userType() async {
     final raw = await _storage.read(StorageKeys.userType);
     return raw?.replaceAll('"', '');
+  }
+
+  Future<void> submitLoanAmountRequest(num requestedAmount) async {
+    final customerId = await _customerId();
+    if (customerId == null || customerId.isEmpty) {
+      throw StateError('Missing customer id');
+    }
+    await _dio.post(
+      ApiEndpoints.submitLoanAmountRequest,
+      data: {'customer_id': customerId, 'requested_amount': requestedAmount},
+      options: Options(contentType: Headers.jsonContentType),
+    );
   }
 
   Future<HomeBundle> fetchHomeBundle() async {
@@ -103,8 +129,8 @@ class HomeRepository {
     final homeMap = homeData is Map<String, dynamic>
         ? homeData
         : homeData is Map
-            ? Map<String, dynamic>.from(homeData)
-            : <String, dynamic>{};
+        ? Map<String, dynamic>.from(homeData)
+        : <String, dynamic>{};
 
     var flags = const ScreenCompletionFlags();
     if (flagsFuture != null) {
@@ -114,8 +140,8 @@ class HomeRepository {
         final list = raw is List
             ? raw
             : (raw is Map && raw['data'] is List)
-                ? raw['data'] as List
-                : const [];
+            ? raw['data'] as List
+            : const [];
         flags = ScreenCompletionFlags.fromScreenList(list);
       } catch (_) {
         // Home still usable without flags.
@@ -161,7 +187,7 @@ class HomeRepository {
 
   /// Lightweight home call — contract id + loan account only (no CD / flags).
   Future<({String? contractId, Map<String, dynamic>? loanAccount})>
-      fetchContractHint() async {
+  fetchContractHint() async {
     final customerId = await _customerId();
     final homeRes = await _dio.post(
       ApiEndpoints.homeScreenInformation,
@@ -172,8 +198,8 @@ class HomeRepository {
     final homeMap = homeData is Map<String, dynamic>
         ? homeData
         : homeData is Map
-            ? Map<String, dynamic>.from(homeData)
-            : <String, dynamic>{};
+        ? Map<String, dynamic>.from(homeData)
+        : <String, dynamic>{};
     final home = HomeSnapshot.fromJson(homeMap);
     return (contractId: home.contractId, loanAccount: home.loanAccount);
   }

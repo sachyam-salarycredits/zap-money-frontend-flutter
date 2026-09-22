@@ -198,6 +198,29 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen> {
       final token = await ref.read(authTokenServiceProvider).verifyAndGetToken();
       final dio = ref.read(dioClientProvider).dio;
 
+      // Fail early with the correct field (email / aadhaar / pan) before save.
+      final uniqueness = await dio.post(
+        ApiEndpoints.checkCustomerUniqueness,
+        data: {
+          'email': email,
+          'aadhaar_number': aadhaar,
+          'pan_number': pan,
+          'mobile_number': mobile,
+          if (customerId != null && customerId.isNotEmpty)
+            'customer_id': customerId,
+        },
+        options: Options(contentType: Headers.jsonContentType),
+      );
+      final uniqBody = uniqueness.data;
+      if (uniqBody is Map &&
+          (uniqBody['status'] == 403 || uniqBody['status'] == '403')) {
+        _toast(
+          uniqBody['msg']?.toString() ??
+              'These details are already registered',
+        );
+        return;
+      }
+
       final response = await dio.post(
         ApiEndpoints.storeCustomerInformation,
         data: {
@@ -243,6 +266,11 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen> {
 
       await ref.read(screenStatusServiceProvider).completePersonalInfo();
       if (mounted) context.go(AppRoutes.equifax);
+    } on DioException catch (e) {
+      final msg = e.response?.data is Map
+          ? e.response!.data['msg']?.toString()
+          : null;
+      _toast(msg ?? 'Could not save personal information');
     } catch (_) {
       _toast('Could not save personal information');
     } finally {

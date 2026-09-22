@@ -31,6 +31,7 @@ class AppRoutes {
   static const vkyc = '/vkyc';
   static const dkyc = '/dkyc';
   static const esign = '/esign';
+  static const references = '/references';
   static const emailVerification = '/email-verification';
 
   // Profile
@@ -40,6 +41,7 @@ class AppRoutes {
   static const profileEmployer = '/profile/employer';
   static const profileSalary = '/profile/salary';
   static const profileAddress = '/profile/address';
+  static const profileImageSelect = '/profile/photo';
   static const myLoans = '/my-loans';
   static const loanTransactions = '/loan-transactions';
 

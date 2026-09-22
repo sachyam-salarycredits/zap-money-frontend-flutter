@@ -46,6 +46,10 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
   String? _offerId;
   double _emi = 0;
   double _interestAmount = 0;
+  double _processingFee = 0;
+  double _processingFeeGstRate = 0.18;
+
+  static const double _approvedOfferFloor = 3000;
 
   @override
   void initState() {
@@ -95,8 +99,20 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
         return double.tryParse(v?.toString() ?? '') ?? fallback;
       }
 
-      final minAmt = asDouble(row['min_loan_amount'], 1000);
-      final maxAmt = asDouble(row['max_loan_amount'], minAmt);
+      var minAmt = asDouble(row['min_loan_amount'], 1000);
+      var maxAmt = asDouble(row['max_loan_amount'], minAmt);
+      // LOS/ops approved amount caps the slider; floor stays ₹3,000.
+      final loanRequest = row['loan_request'];
+      if (loanRequest is Map) {
+        final requestStatus = loanRequest['status']?.toString().toUpperCase();
+        final approvedAmt = asDouble(loanRequest['approved_amount']);
+        if (requestStatus == 'APPROVED' && approvedAmt >= 1000) {
+          maxAmt = approvedAmt;
+          minAmt = approvedAmt < _approvedOfferFloor
+              ? approvedAmt
+              : _approvedOfferFloor;
+        }
+      }
       var minTerm = asDouble(row['min_term'], 1).round().clamp(1, 60);
       var maxTerm = asDouble(
         row['max_term'],
@@ -113,6 +129,8 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
           row['customer_pricing_id']?.toString() ??
           row['record_id']?.toString() ??
           '';
+      final processingFee = asDouble(row['loan_fee']);
+      final gstRate = asDouble(row['processing_fee_gst_rate'], 0.18);
 
       setState(() {
         _minAmount = minAmt;
@@ -123,6 +141,8 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
         _term = maxTerm;
         _interestRate = rate;
         _offerId = pricingId;
+        _processingFee = processingFee;
+        _processingFeeGstRate = gstRate > 0 ? gstRate : 0.18;
         _loadingOffer = false;
       });
       await _recalcEmi();
@@ -148,6 +168,14 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       return Map<String, dynamic>.from(root);
     }
     return null;
+  }
+
+  double get _processingFeeGst =>
+      (_processingFee * _processingFeeGstRate * 100).roundToDouble() / 100;
+
+  double get _netDisbursement {
+    final net = _amount - _processingFee - _processingFeeGst;
+    return net < 0 ? 0 : net;
   }
 
   Future<void> _recalcEmi() async {
@@ -282,6 +310,10 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       final status = body is Map ? body['status'] : null;
       if (status == 403 ||
           status == '403' ||
+          status == 400 ||
+          status == '400' ||
+          status == 409 ||
+          status == '409' ||
           (body is Map && body['error'] != null)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -403,7 +435,9 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
                   child: Slider(
                     value: _amount.clamp(_minAmount, _maxAmount),
                     min: _minAmount,
-                    max: _maxAmount <= _minAmount ? _minAmount + 1 : _maxAmount,
+                    max: _maxAmount <= _minAmount
+                        ? _minAmount + 1
+                        : _maxAmount,
                     divisions: _maxAmount <= _minAmount
                         ? 1
                         : ((_maxAmount - _minAmount) / 1000).round().clamp(
@@ -493,6 +527,20 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
                 ),
                 _metricRow('Monthly EMI', _currency.format(_emi)),
                 _metricRow('Total interest', _currency.format(_interestAmount)),
+                if (_processingFee > 0) ...[
+                  _metricRow(
+                    'Processing fee',
+                    _currency.format(_processingFee),
+                  ),
+                  _metricRow(
+                    'GST on fee (${(_processingFeeGstRate * 100).toStringAsFixed(0)}%)',
+                    _currency.format(_processingFeeGst),
+                  ),
+                  _metricRow(
+                    'You will receive',
+                    _currency.format(_netDisbursement),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 InkWell(
                   onTap: () => setState(() => _agreed = !_agreed),

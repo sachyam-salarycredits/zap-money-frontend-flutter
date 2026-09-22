@@ -23,6 +23,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  final _scrollController = ScrollController();
   bool _hasSession = false;
   bool _biometricInFlight = false;
   String _appVersion = '';
@@ -30,14 +31,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_scrollButtonIntoView);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_scrollButtonIntoView);
     _controller.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollButtonIntoView() {
+    if (!_focusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 280));
+      if (!mounted || !_scrollController.hasClients) return;
+      await _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _load() async {
@@ -187,9 +204,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final loading = ref.watch(globalLoadingProvider);
+    final keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
+    final keyboardOpen = keyboardHeight > 0;
 
     return Scaffold(
       // Avoid full-scene resize jank/crashes on some Samsung GPUs when IME opens.
+      // Keyboard overlap is handled via ListView bottom padding + auto-scroll.
       resizeToAvoidBottomInset: false,
       backgroundColor: AppColors.deepPurple,
       body: Stack(
@@ -203,30 +223,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 48, 24, 16),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    keyboardOpen ? 12 : 48,
+                    24,
+                    keyboardOpen ? 8 : 16,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Create better\ntogether',
+                        keyboardOpen
+                            ? 'Create better together'
+                            : 'Create better\ntogether',
                         style: TextStyle(
                           fontFamily: 'DigretoNeue',
-                          fontSize: 34,
+                          fontSize: keyboardOpen ? 22 : 34,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                           height: 1.2,
                         ),
                       ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Join our community',
-                        style: TextStyle(
-                          fontFamily: 'DigretoNeue',
-                          fontSize: 16,
-                          color: Colors.white,
+                      if (!keyboardOpen) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Join our community',
+                          style: TextStyle(
+                            fontFamily: 'DigretoNeue',
+                            fontSize: 16,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -239,7 +268,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           BorderRadius.vertical(top: Radius.circular(28)),
                     ),
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        28,
+                        20,
+                        24 + keyboardHeight,
+                      ),
                       children: [
                         const Text(
                           'Enter your mobile number',
@@ -352,7 +389,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 48),
+                        SizedBox(height: keyboardOpen ? 16 : 48),
                         ValueListenableBuilder<TextEditingValue>(
                           valueListenable: _controller,
                           builder: (context, value, _) {

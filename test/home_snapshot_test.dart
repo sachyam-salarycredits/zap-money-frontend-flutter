@@ -1,8 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zap_money/features/dashboard/data/home_repository.dart';
 import 'package:zap_money/features/dashboard/domain/home_snapshot.dart';
 
 void main() {
   const resolver = HomeCardResolver();
+
+  test('credit decision parses the manual loan request', () {
+    final decision = CreditDecisionSummary.fromJson({
+      'status': 'APP',
+      'max_loan_amount': '50000',
+      'loan_request': {
+        'status': 'PENDING',
+        'requested_amount': '75000.00',
+        'approved_amount': null,
+      },
+    });
+
+    expect(decision.loanRequestStatus, 'PENDING');
+    expect(decision.requestedAmount, 75000);
+    expect(decision.approvedAmount, isNull);
+  });
 
   test('HomeSnapshot parses SF-shaped records', () {
     final snap = HomeSnapshot.fromJson({
@@ -133,8 +150,11 @@ void main() {
     expect(kind, HomeCardKind.activeLoan);
   });
 
-  HomeSnapshot disbursedSnapshot(Map<String, dynamic> loanAccount,
-      {bool loanRequired = true, bool topUpEligible = false}) {
+  HomeSnapshot disbursedSnapshot(
+    Map<String, dynamic> loanAccount, {
+    bool loanRequired = true,
+    bool topUpEligible = false,
+  }) {
     return HomeSnapshot.fromJson({
       'Customer': {
         'records': [
@@ -152,16 +172,16 @@ void main() {
   }
 
   HomeCardKind resolveDisbursed(HomeSnapshot home) => resolver.resolve(
-        home: home,
-        plOrDc: true,
-        enach: true,
-        ocr: true,
-        vkyc: false,
-        bank: true,
-        bankVerified: true,
-        finbit: true,
-        equifax: true,
-      );
+    home: home,
+    plOrDc: true,
+    enach: true,
+    ocr: true,
+    vkyc: false,
+    bank: true,
+    bankVerified: true,
+    finbit: true,
+    equifax: true,
+  );
 
   test('disbursed loan with zero remaining EMIs → repayment complete', () {
     final home = disbursedSnapshot({'Remaining_EMI__c': 0});
@@ -182,7 +202,9 @@ void main() {
   test('top-up eligibility alone does not mark a running loan as repaid', () {
     // The flag is set at closure and never cleared, so it must not override the
     // next loan's own status.
-    final home = disbursedSnapshot({'Remaining_EMI__c': 2}, topUpEligible: true);
+    final home = disbursedSnapshot({
+      'Remaining_EMI__c': 2,
+    }, topUpEligible: true);
     expect(home.loanCompleted, isFalse);
     expect(resolveDisbursed(home), HomeCardKind.activeLoan);
   });
@@ -215,8 +237,9 @@ void main() {
   });
 
   test('repaid loan still open on marketplace cannot re-apply', () {
-    final home =
-        disbursedSnapshot({'Remaining_EMI__c': 0}, loanRequired: false);
+    final home = disbursedSnapshot({
+      'Remaining_EMI__c': 0,
+    }, loanRequired: false);
     expect(home.loanCompleted, isTrue);
     expect(home.canApplyForNewLoan, isFalse);
   });
@@ -266,8 +289,9 @@ void main() {
 
     final upcoming = disbursedSnapshot({
       'Remaining_EMI__c': 4,
-      'loan__Oldest_Due_Date__c':
-          DateTime.now().add(const Duration(days: 5)).toIso8601String(),
+      'loan__Oldest_Due_Date__c': DateTime.now()
+          .add(const Duration(days: 5))
+          .toIso8601String(),
     });
     expect(upcoming.overdueDays, isNull);
 
@@ -344,11 +368,12 @@ void main() {
       finbit: true,
       equifax: true,
       creditStatus: 'APP',
+      loanRequestStatus: 'APPROVED',
     );
     expect(kind, HomeCardKind.creditOffer);
   });
 
-  test('bank verified + APP without PL/DC → credit offer', () {
+  test('bank verified + APP without a request → amount request', () {
     final kind = resolver.resolve(
       home: HomeSnapshot.fromJson({
         'Customer': {
@@ -367,7 +392,24 @@ void main() {
       equifax: true,
       creditStatus: 'APP',
     );
-    expect(kind, HomeCardKind.creditOffer);
+    expect(kind, HomeCardKind.creditRequest);
+  });
+
+  test('submitted amount request shows pending review', () {
+    final kind = resolver.resolve(
+      home: HomeSnapshot.fromJson({}),
+      plOrDc: false,
+      enach: false,
+      ocr: false,
+      vkyc: false,
+      bank: true,
+      bankVerified: true,
+      finbit: true,
+      equifax: true,
+      creditStatus: 'APP',
+      loanRequestStatus: 'PENDING',
+    );
+    expect(kind, HomeCardKind.creditPending);
   });
 
   test('equifax without bank → onboarding even without employer', () {

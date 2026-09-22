@@ -202,6 +202,7 @@ enum HomeCardKind {
   cancelled,
   cancelReapply,
   completeProcess,
+  creditRequest,
   creditOffer,
   creditPending,
   creditRejected,
@@ -225,6 +226,7 @@ class HomeCardResolver {
     required bool finbit,
     required bool equifax,
     String? creditStatus,
+    String? loanRequestStatus,
   }) {
     if (home == null) return HomeCardKind.idle;
 
@@ -233,6 +235,7 @@ class HomeCardResolver {
     final emailDone = home.emailVerified;
     final transferred = home.transferredToBank;
     final cd = creditStatus?.toUpperCase();
+    final requestStatus = loanRequestStatus?.toUpperCase();
 
     if (stage == 'canceled' || stage == 'cancelled') {
       return home.eligibleForReapply
@@ -265,9 +268,15 @@ class HomeCardResolver {
       return HomeCardKind.funding;
     }
 
-    // RN: bank verified + finbit + APP → Home Withdraw / Unlock (before accept).
+    // Eligible customers request an amount before an offer is presented.
+    // Operations reviews that request and records the final approved amount.
     if (!plOrDc && bank && bankVerified && finbit) {
-      if (cd == 'APP') return HomeCardKind.creditOffer;
+      if (requestStatus == 'PENDING') return HomeCardKind.creditPending;
+      if (requestStatus == 'REJECTED') return HomeCardKind.creditRejected;
+      if (requestStatus == 'APPROVED' && cd == 'APP') {
+        return HomeCardKind.creditOffer;
+      }
+      if (cd == 'APP') return HomeCardKind.creditRequest;
       if (cd == 'REF' || cd == 'WIP') return HomeCardKind.creditPending;
       if (cd == 'REJ') return HomeCardKind.creditRejected;
     }

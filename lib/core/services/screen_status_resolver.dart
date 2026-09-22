@@ -138,13 +138,15 @@ class ScreenStatusResolver {
     }
     if (flags.addressSelection) return AppRoutes.waiting;
     if (flags.finbit && flags.bankDetails) return AppRoutes.residenceAddress;
-    if (flags.bankDetails) return AppRoutes.bankStatement;
+    // bankDetails is set only after Finarkein consent ACTIVE (not mid-OTP quit).
+    // Continue residence while ingest finishes; do not reopen WebView.
+    if (flags.bankDetails) return AppRoutes.residenceAddress;
     if (flags.collegeDetails || flags.employerDetails) {
-      return AppRoutes.bankDetails;
+      return AppRoutes.finbit;
     }
     if (flags.equifax) {
       if (customerPlan == '0') return AppRoutes.rejected;
-      // RN: after equifax → location permission, then bank/college.
+      // After equifax → location, then Bank account Validation (Finarkein).
       return AppRoutes.locationPermission;
     }
     if (flags.personalInfo) return AppRoutes.equifax;

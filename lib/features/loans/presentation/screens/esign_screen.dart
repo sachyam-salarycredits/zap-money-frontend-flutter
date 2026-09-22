@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../data/esign_repository.dart';
+import '../../data/references_repository.dart';
 
 /// Opens Cashfree e-sign [signing_link] and refreshes status on return/resume.
 class EsignScreen extends ConsumerStatefulWidget {
@@ -43,6 +44,17 @@ class _EsignScreenState extends ConsumerState<EsignScreen>
   }
 
   Future<void> _bootstrap() async {
+    // References must be completed before e-sign.
+    try {
+      final refs = await ref.read(referencesRepositoryProvider).fetchStatus();
+      if (!mounted) return;
+      if (!refs.complete) {
+        context.go(AppRoutes.references);
+        return;
+      }
+    } catch (_) {
+      // If status check fails, still attempt e-sign; disbursement gate remains.
+    }
     await _refreshStatus(openWebViewIfNeeded: true);
   }
 

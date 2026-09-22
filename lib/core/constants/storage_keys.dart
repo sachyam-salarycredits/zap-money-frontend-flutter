@@ -14,4 +14,6 @@ class StorageKeys {
   static const storageToken = 'StorageToken';
   static const normalToken = 'NormalToken';
   static const pendingEmiPayment = 'pendingEmiPayment';
+  /// Latest Finarkein AA run id — background ingest + Waiting sync.
+  static const finarkeinRequestId = 'finarkeinRequestId';
 }

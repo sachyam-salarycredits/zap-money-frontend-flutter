@@ -27,8 +27,10 @@ import '../features/payments/presentation/screens/enach_screen.dart';
 import '../features/payments/presentation/screens/enach_upi_screen.dart';
 import '../features/loans/presentation/screens/loan_details_screen.dart';
 import '../features/loans/presentation/screens/esign_screen.dart';
+import '../features/loans/presentation/screens/references_screen.dart';
 import '../features/profile/presentation/screens/profile_detail_screens.dart';
 import '../features/profile/presentation/screens/profile_hub_screen.dart';
+import '../features/profile/presentation/screens/profile_image_select_screen.dart';
 import '../features/profile/presentation/screens/salary_details_screen.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -190,6 +192,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const EsignScreen(),
       ),
       GoRoute(
+        path: AppRoutes.references,
+        builder: (context, state) => const ReferencesScreen(),
+      ),
+      GoRoute(
         path: AppRoutes.emailVerification,
         builder: (context, state) => EmailVerificationScreen(
           initialEmail: state.extra is String ? state.extra as String : null,
@@ -198,6 +204,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.profile,
         builder: (context, state) => const ProfileHubScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.profileImageSelect,
+        builder: (context, state) => const ProfileImageSelectScreen(),
       ),
       GoRoute(
         path: AppRoutes.profilePersonal,

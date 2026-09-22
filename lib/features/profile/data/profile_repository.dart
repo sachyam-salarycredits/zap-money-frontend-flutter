@@ -198,6 +198,66 @@ class ProfileRepository {
     return response.statusCode == 200;
   }
 
+  /// Preset avatar: POST /getProfileIcon → POST /save_document with URL string.
+  Future<bool> uploadProfilePhotoFromPreset(int profileKey) async {
+    final customerId =
+        (await _storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+    final sfId =
+        (await _storage.read(StorageKeys.sfCustomerId))?.replaceAll('"', '');
+    if (customerId == null || customerId.isEmpty) return false;
+
+    final iconResponse = await _dio.post(
+      ApiEndpoints.getProfileIcon,
+      data: {'profile_key': profileKey},
+      options: Options(contentType: Headers.jsonContentType),
+    );
+    final iconBody = iconResponse.data;
+    if (iconBody is! Map) return false;
+    final profileUrl = iconBody['profile_url']?.toString();
+    if (profileUrl == null || profileUrl.isEmpty) return false;
+
+    final form = FormData.fromMap({
+      'document_name': 'profile_photo',
+      'customer_id': customerId,
+      if (sfId != null && sfId.isNotEmpty) 'sf_customer_id': sfId,
+      'file': profileUrl,
+    });
+    final response = await _dio.post(ApiEndpoints.saveDocument, data: form);
+    return _verifyProfilePhotoSaved(response);
+  }
+
+  /// Camera/gallery: multipart upload with document_name profile_photo.
+  Future<bool> uploadProfilePhoto({
+    required String filePath,
+    required String fileName,
+  }) async {
+    final customerId =
+        (await _storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+    final sfId =
+        (await _storage.read(StorageKeys.sfCustomerId))?.replaceAll('"', '');
+    if (customerId == null || customerId.isEmpty) return false;
+
+    final form = FormData.fromMap({
+      'document_name': 'profile_photo',
+      'customer_id': customerId,
+      if (sfId != null && sfId.isNotEmpty) 'sf_customer_id': sfId,
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+    final response = await _dio.post(ApiEndpoints.saveDocument, data: form);
+    return _verifyProfilePhotoSaved(response);
+  }
+
+  Future<bool> _verifyProfilePhotoSaved(Response<dynamic> response) async {
+    final body = response.data;
+    if (body is! Map) return false;
+    final status = body['status'];
+    if (status != 200 && status != '200') return false;
+
+    final profile = await fetchProfile();
+    final url = profile?['profile_photo_link']?.toString();
+    return url != null && url.isNotEmpty;
+  }
+
   Future<void> logout() async {
     try {
       final storageToken = await _storage.readJson(StorageKeys.storageToken);

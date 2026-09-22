@@ -94,7 +94,7 @@ void main() {
     expect(route, AppRoutes.profession);
   });
 
-  test('bankDetails without finbit routes to bank statement', () {
+  test('bankDetails without finbit routes to residence (AA ingest background)', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(
         permission: true,
@@ -104,7 +104,32 @@ void main() {
         bankDetails: true,
       ),
     );
-    expect(route, AppRoutes.bankStatement);
+    expect(route, AppRoutes.residenceAddress);
+  });
+
+  test('employer without bank routes to bank account validation', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(
+        permission: true,
+        personalInfo: true,
+        equifax: true,
+        employerDetails: true,
+      ),
+    );
+    expect(route, AppRoutes.finbit);
+  });
+
+  test('college without bank routes to bank account validation', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(
+        permission: true,
+        personalInfo: true,
+        equifax: true,
+        collegeDetails: true,
+      ),
+      userType: 'Student',
+    );
+    expect(route, AppRoutes.finbit);
   });
 
   test('no flags routes to permission', () {

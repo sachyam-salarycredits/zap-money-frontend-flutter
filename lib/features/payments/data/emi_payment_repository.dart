@@ -49,22 +49,28 @@ class EmiPaymentRepository {
   }
 
   /// RN home Pre-Pay → `CashfreeEmiPayment` with `{ amount, contractId, cid }`.
+  /// Pass [purpose] `cooling_closure` or `foreclosure` for full loan close
+  /// (server forces the payable amount).
   Future<EmiCheckoutResult> createEmiCheckout({
     required num amount,
     required String contractId,
+    String purpose = 'emi',
   }) async {
     final customerId = await _customerId();
     if (customerId == null || customerId.isEmpty) {
       throw StateError('Missing customer id');
     }
 
+    final payload = <String, dynamic>{
+      'amount': amount is double ? amount.round() : amount,
+      'contractId': contractId,
+      'cid': int.tryParse(customerId) ?? customerId,
+      'purpose': purpose,
+    };
+
     final res = await _dio.post(
       ApiEndpoints.cashfreeEmiPayment,
-      data: {
-        'amount': amount is double ? amount.round() : amount,
-        'contractId': contractId,
-        'cid': int.tryParse(customerId) ?? customerId,
-      },
+      data: payload,
       options: Options(contentType: Headers.jsonContentType),
     );
 

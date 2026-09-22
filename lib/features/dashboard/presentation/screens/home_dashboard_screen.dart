@@ -1,4 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +12,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../payments/data/emi_payment_repository.dart';
 import '../../../loans/data/esign_repository.dart';
+import '../../../loans/data/references_repository.dart';
 import '../../data/home_repository.dart';
 import '../../domain/home_snapshot.dart';
 
@@ -25,6 +28,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     with WidgetsBindingObserver {
   HomeBundle? _bundle;
   EsignStatus? _esignStatus;
+  LoanReferenceStatus? _referenceStatus;
   String? _error;
   bool _loading = true;
   final _resolver = const HomeCardResolver();
@@ -62,10 +66,17 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     try {
       final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
       EsignStatus? esign;
+      LoanReferenceStatus? references;
       final home = bundle.home;
-      final shouldLoadEsign = home != null &&
-          home.peerStage.toLowerCase() == 'funded';
+      final shouldLoadEsign = home.peerStage.toLowerCase() == 'funded';
       if (shouldLoadEsign) {
+        try {
+          references = await ref
+              .read(referencesRepositoryProvider)
+              .fetchStatus();
+        } catch (_) {
+          references = null;
+        }
         try {
           esign = await ref
               .read(esignRepositoryProvider)
@@ -78,6 +89,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         setState(() {
           _bundle = bundle;
           _esignStatus = esign;
+          _referenceStatus = references;
           _loading = false;
         });
       }
@@ -97,11 +109,19 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     context.push(AppRoutes.dkyc);
   }
 
+  void _openReferences() {
+    if (!mounted) return;
+    context.push(AppRoutes.references);
+  }
+
   /// RN home Pre-Pay / Pay EMI modal → Cashfree EMI UPI checkout.
   Future<void> _showEmiPaymentSheet(HomeSnapshot home) async {
     final amount = home.installmentAmount;
     final contractId = home.contractId;
-    if (amount == null || amount <= 0 || contractId == null || contractId.isEmpty) {
+    if (amount == null ||
+        amount <= 0 ||
+        contractId == null ||
+        contractId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('EMI amount unavailable for this loan')),
@@ -113,14 +133,14 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     final dueIn = due == null
         ? null
         : DateTime(due.year, due.month, due.day)
-            .difference(
-              DateTime(
-                DateTime.now().year,
-                DateTime.now().month,
-                DateTime.now().day,
-              ),
-            )
-            .inDays;
+              .difference(
+                DateTime(
+                  DateTime.now().year,
+                  DateTime.now().month,
+                  DateTime.now().day,
+                ),
+              )
+              .inDays;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -161,10 +181,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     borderRadius: BorderRadius.circular(14),
                     onTap: () {
                       Navigator.of(ctx).pop();
-                      _startEmiCheckout(
-                        amount: amount,
-                        contractId: contractId,
-                      );
+                      _startEmiCheckout(amount: amount, contractId: contractId);
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -206,17 +223,16 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
     try {
-      final result = await ref.read(emiPaymentRepositoryProvider).createEmiCheckout(
-            amount: amount,
-            contractId: contractId,
-          );
+      final result = await ref
+          .read(emiPaymentRepositoryProvider)
+          .createEmiCheckout(amount: amount, contractId: contractId);
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
 
       if (result.mockPaid) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('EMI payment recorded')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('EMI payment recorded')));
         await _load();
         return;
       }
@@ -228,9 +244,9 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
       );
       if (!mounted) return;
       if (!launched) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open UPI app')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Could not open UPI app')));
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
@@ -305,6 +321,129 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     );
   }
 
+  Future<void> _showLoanAmountRequestSheet() async {
+    final controller = TextEditingController();
+    var submitting = false;
+    String? validationError;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF2A0A5C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> submit() async {
+              final amount = int.tryParse(controller.text.trim());
+              if (amount == null || amount < 1000) {
+                setSheetState(() {
+                  validationError = 'Enter an amount of at least ₹1,000';
+                });
+                return;
+              }
+
+              setSheetState(() {
+                submitting = true;
+                validationError = null;
+              });
+              try {
+                await ref
+                    .read(homeRepositoryProvider)
+                    .submitLoanAmountRequest(amount);
+                if (!sheetContext.mounted) return;
+                Navigator.of(sheetContext).pop();
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Request submitted. Our team will contact you after review.',
+                    ),
+                  ),
+                );
+                await _load();
+              } on DioException catch (error) {
+                if (!sheetContext.mounted) return;
+                final body = error.response?.data;
+                final message = body is Map ? body['msg']?.toString() : null;
+                setSheetState(() {
+                  submitting = false;
+                  validationError =
+                      message ?? 'Could not submit your request. Try again.';
+                });
+              } catch (_) {
+                if (!sheetContext.mounted) return;
+                setSheetState(() {
+                  submitting = false;
+                  validationError = 'Could not submit your request. Try again.';
+                });
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  24 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'How much would you like to borrow?',
+                      style: AppTypography.headline(size: 20),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enter your preferred amount. Our team will review your '
+                      'profile and contact you with the amount available.',
+                      style: AppTypography.body(
+                        size: 14,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      enabled: !submitting,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Requested loan amount',
+                        prefixText: '₹ ',
+                        errorText: validationError,
+                      ),
+                      onSubmitted: submitting ? null : (_) => submit(),
+                    ),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      onPressed: submitting ? null : submit,
+                      child: submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Submit for review'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(homeRefreshTickProvider, (previous, next) {
@@ -331,6 +470,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             finbit: flags?.finbit ?? false,
             equifax: flags?.equifax ?? false,
             creditStatus: credit?.status,
+            loanRequestStatus: credit?.loanRequestStatus,
           );
 
     return Scaffold(
@@ -399,8 +539,6 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
   Widget _buildHero(HomeCardKind kind, HomeSnapshot? home) {
     final flags = _bundle?.flags;
     final credit = _bundle?.creditDecision;
-    final isSalaried = (_bundle?.userType ?? '').toLowerCase() == 'salaried';
-    final showUnlock = isSalaried && flags?.employerDetails != true;
 
     switch (kind) {
       case HomeCardKind.activeLoan:
@@ -421,10 +559,18 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         final isSalaried =
             (_bundle?.userType ?? '').toLowerCase() == 'salaried';
         final loanFunded = (home?.peerStage ?? '').toLowerCase() == 'funded';
-        final hasSigningLink = loanFunded &&
+        final hasSigningLink =
+            loanFunded &&
             (_esignStatus?.signingLink?.trim().isNotEmpty ?? false);
         final esignDone = loanFunded && _esignStatus?.isSigned == true;
-        final fundingBody = hasSigningLink && !esignDone
+        // References are required before e-sign.
+        final referencesDone =
+            loanFunded && (_referenceStatus?.complete == true);
+        final referencesPending = loanFunded && !referencesDone;
+        final canSign = hasSigningLink && referencesDone && !esignDone;
+        final fundingBody = referencesPending
+            ? 'Add 2 personal references before signing your loan agreement.'
+            : canSign
             ? 'Your loan agreement is ready. Sign it to proceed with disbursement.'
             : loanFunded && !esignDone
             ? 'Your loan is funded. We will notify you when the agreement is ready to sign.'
@@ -433,15 +579,24 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           title: 'Disbursal Process',
           body: fundingBody,
           accentAsset: 'assets/images/profile/homecoins.png',
-          actionLabel: hasSigningLink && !esignDone
+          actionLabel: referencesPending
+              ? 'Add references'
+              : canSign
               ? 'Sign loan agreement'
               : null,
-          onAction: hasSigningLink && !esignDone ? _openEsign : null,
+          onAction: referencesPending
+              ? _openReferences
+              : canSign
+              ? _openEsign
+              : null,
           timeline: _FundingTimeline(
             kycLabel: isSalaried ? 'Video KYC' : 'Digital KYC',
             loanFunded: loanFunded,
             esignDone: esignDone,
-            esignPending: hasSigningLink && !esignDone,
+            esignPending:
+                canSign || (hasSigningLink && referencesDone && !esignDone),
+            referencesDone: referencesDone,
+            referencesPending: referencesPending,
           ),
         );
       case HomeCardKind.cancelled:
@@ -479,29 +634,37 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           actionLabel: 'Take action',
           onAction: () => _showCompleteProcessSheet(home!),
         );
-      case HomeCardKind.creditOffer:
-        final amount = credit?.maxLoanAmount;
+      case HomeCardKind.creditRequest:
         return _HeroCard(
-          title: 'Your Credit limit',
-          body: amount != null
-              ? 'Your credit amount of ${_currency.format(amount)} is ready'
-              : 'Your credit amount is ready',
+          title: 'How much do you need?',
+          body:
+              'Tell us your preferred loan amount. Our team will review your '
+              'scores and other eligibility criteria, then contact you.',
           accentAsset: 'assets/images/profile/homecoins.png',
-          actionLabel: 'Withdraw Now',
+          actionLabel: 'Enter loan amount',
+          onAction: _showLoanAmountRequestSheet,
+        );
+      case HomeCardKind.creditOffer:
+        final amount = credit?.approvedAmount ?? credit?.maxLoanAmount;
+        return _HeroCard(
+          title: 'Your loan offer is ready',
+          body: amount != null
+              ? '${_currency.format(amount)} has been approved after review'
+              : 'Your approved loan offer is ready',
+          accentAsset: 'assets/images/profile/homecoins.png',
+          actionLabel: 'View offer',
           onAction: () => context.push(AppRoutes.offer),
-          secondaryLabel: showUnlock ? 'Unlock upto ₹50,000' : null,
-          onSecondary: showUnlock
-              ? () => context.push(
-                  AppRoutes.employerDetails,
-                  extra: {'isFrom': 'unlockOffer'},
-                )
-              : null,
         );
       case HomeCardKind.creditPending:
+        final requested = credit?.requestedAmount;
         return _HeroCard(
-          title: 'Waiting for the decision',
-          body:
-              'We are viewing your application. We try to give you a decision within 24 hours.',
+          title: 'Your request is under review',
+          body: requested == null
+              ? 'Our team is reviewing your application and will contact you '
+                    'to discuss the amount available.'
+              : 'We received your request for '
+                    '${_currency.format(requested)}. Our team will review it and '
+                    'contact you.',
           actionLabel: 'View status',
           onAction: () => context.push(
             AppRoutes.referred,
@@ -551,10 +714,7 @@ class _HeroCard extends StatelessWidget {
     required this.body,
     this.actionLabel,
     this.onAction,
-    this.secondaryLabel,
-    this.onSecondary,
     this.accentAsset,
-    this.steps,
     this.timeline,
   });
 
@@ -562,10 +722,7 @@ class _HeroCard extends StatelessWidget {
   final String body;
   final String? actionLabel;
   final VoidCallback? onAction;
-  final String? secondaryLabel;
-  final VoidCallback? onSecondary;
   final String? accentAsset;
-  final List<_MiniStep>? steps;
   final Widget? timeline;
 
   @override
@@ -589,7 +746,7 @@ class _HeroCard extends StatelessWidget {
             Image.asset(
               accentAsset!,
               height: 56,
-              errorBuilder: (_, __, ___) => const SizedBox(),
+              errorBuilder: (_, _, _) => const SizedBox(),
             ),
             const SizedBox(height: 12),
           ],
@@ -599,38 +756,11 @@ class _HeroCard extends StatelessWidget {
             body,
             style: AppTypography.body(size: 14, color: AppColors.muted),
           ),
-          if (timeline != null) ...[
-            const SizedBox(height: 16),
-            timeline!,
-          ] else if (steps != null) ...[
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                for (final s in steps!)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: s,
-                    ),
-                  ),
-              ],
-            ),
-          ],
+          if (timeline != null) ...[const SizedBox(height: 16), timeline!],
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 20),
             ZapSubmitButton(title: actionLabel!, onPressed: onAction),
           ],
-          if (secondaryLabel != null && onSecondary != null)
-            TextButton(
-              onPressed: onSecondary,
-              child: Text(
-                secondaryLabel!,
-                style: AppTypography.body(
-                  size: 14,
-                  color: AppColors.accentMint,
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -968,12 +1098,16 @@ class _FundingTimeline extends StatelessWidget {
     required this.loanFunded,
     this.esignDone = false,
     this.esignPending = false,
+    this.referencesDone = false,
+    this.referencesPending = false,
   });
 
   final String kycLabel;
   final bool loanFunded;
   final bool esignDone;
   final bool esignPending;
+  final bool referencesDone;
+  final bool referencesPending;
 
   @override
   Widget build(BuildContext context) {
@@ -987,6 +1121,13 @@ class _FundingTimeline extends StatelessWidget {
         const _InProcessRow(),
         const SizedBox(height: 10),
         _TimelineStep(done: loanFunded, label: 'Loan funded'),
+        if (loanFunded || referencesPending || referencesDone)
+          _TimelineStep(
+            done: referencesDone,
+            label: referencesPending && !referencesDone
+                ? 'Add 2 references (pending)'
+                : 'References submitted',
+          ),
         if (loanFunded || esignPending || esignDone)
           _TimelineStep(
             done: esignDone,
@@ -1096,30 +1237,6 @@ class _InProcessRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _MiniStep extends StatelessWidget {
-  const _MiniStep({required this.done, required this.label});
-  final bool done;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(
-          done ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: done ? AppColors.success : AppColors.muted,
-          size: 22,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: AppTypography.body(size: 12, color: AppColors.muted),
-        ),
-      ],
     );
   }
 }

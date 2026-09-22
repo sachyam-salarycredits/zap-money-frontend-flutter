@@ -154,7 +154,7 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
         setState(() => _pending = null);
         await _refresh();
         if (_isRepeatLoan && mounted) {
-          context.go(AppRoutes.bankDetails);
+          context.go(AppRoutes.finbit);
         }
       } else {
         _toast('Upload failed. Please try again.');

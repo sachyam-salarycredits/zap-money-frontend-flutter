@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,8 +38,12 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
   bool _stageModal = false;
   bool _cancelModal = false;
   bool _paymentModal = false;
+  bool _coolingModal = false;
+  bool _foreclosureModal = false;
   bool _downloadingPdf = false;
   int? _downloadingPdfIndex;
+  int _coolingSecondsLeft = 0;
+  Timer? _coolingTimer;
 
   final _currency = NumberFormat.currency(
     locale: 'en_IN',
@@ -49,6 +55,100 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _coolingTimer?.cancel();
+    super.dispose();
+  }
+
+  Map<String, dynamic>? get _coolingPeriod {
+    final raw = _loanDetail?['coolingPeriod'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  bool get _coolingEligible {
+    final cooling = _coolingPeriod;
+    if (cooling == null) return false;
+    if (cooling['eligible'] != true) return false;
+    return _coolingSecondsLeft > 0;
+  }
+
+  Map<String, dynamic>? get _foreclosure {
+    final raw = _loanDetail?['foreclosure'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
+  bool get _foreclosureEligible {
+    if (_coolingEligible) return false;
+    final foreclosure = _foreclosure;
+    if (foreclosure == null) return false;
+    return foreclosure['eligible'] == true;
+  }
+
+  String get _foreclosureChargePctLabel {
+    final raw = _foreclosure?['foreclosureChargePct'];
+    if (raw is num) {
+      return '${raw % 1 == 0 ? raw.toInt() : raw}%';
+    }
+    final parsed = double.tryParse(raw?.toString() ?? '');
+    if (parsed == null) return '—';
+    return '${parsed % 1 == 0 ? parsed.toInt() : parsed}%';
+  }
+
+  void _syncCoolingCountdown([Map<String, dynamic>? detail]) {
+    _coolingTimer?.cancel();
+    final cooling = detail?['coolingPeriod'] is Map
+        ? Map<String, dynamic>.from(detail!['coolingPeriod'] as Map)
+        : _coolingPeriod;
+
+    var secondsLeft = 0;
+    if (cooling != null && cooling['eligible'] == true) {
+      final expiresRaw = cooling['expiresAt']?.toString();
+      final expires = expiresRaw != null ? DateTime.tryParse(expiresRaw) : null;
+      if (expires != null) {
+        secondsLeft = expires.toLocal().difference(DateTime.now()).inSeconds;
+      } else {
+        final seconds = cooling['secondsRemaining'];
+        secondsLeft = seconds is num
+            ? seconds.toInt()
+            : int.tryParse(seconds?.toString() ?? '') ?? 0;
+      }
+    }
+    if (secondsLeft < 0) secondsLeft = 0;
+
+    if (mounted) {
+      setState(() => _coolingSecondsLeft = secondsLeft);
+    } else {
+      _coolingSecondsLeft = secondsLeft;
+    }
+
+    if (secondsLeft <= 0) return;
+
+    _coolingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _coolingSecondsLeft -= 1;
+        if (_coolingSecondsLeft <= 0) {
+          _coolingSecondsLeft = 0;
+          _coolingTimer?.cancel();
+          _coolingModal = false;
+        }
+      });
+    });
+  }
+
+  String get _coolingCountdownLabel {
+    final total = _coolingSecondsLeft < 0 ? 0 : _coolingSecondsLeft;
+    final hours = total ~/ 3600;
+    final minutes = (total % 3600) ~/ 60;
+    final seconds = total % 60;
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
   }
 
   Future<void> _load() async {
@@ -93,6 +193,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
             _loanDetail = status;
             _loading = false;
           });
+          _syncCoolingCountdown(status);
           return;
         }
 
@@ -115,6 +216,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
           _loanDetail = status;
           _loading = false;
         });
+        _syncCoolingCountdown(status);
         ref.read(loansPrefetchProvider.notifier).state = LoansPrefetchState(
           contracts: contracts,
           flags: flags,
@@ -166,6 +268,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
         _loanDetail = status;
         _loading = false;
       });
+      _syncCoolingCountdown(status);
       ref.read(loansPrefetchProvider.notifier).state = LoansPrefetchState(
         contracts: contracts,
         flags: flags,
@@ -382,7 +485,78 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
       );
       return;
     }
+    await _startCashfreeCheckout(
+      amount: amount,
+      contractId: contractId,
+      purpose: 'emi',
+      successMessage: 'EMI payment recorded',
+      failureMessage: 'Could not start EMI payment',
+    );
+  }
 
+  Future<void> _startCoolingClosureCheckout() async {
+    final cooling = _coolingPeriod;
+    final contractId = _contractId?.trim();
+    final rawTotal = cooling?['totalAmount'];
+    final total = rawTotal is num
+        ? rawTotal.round()
+        : int.tryParse(rawTotal?.toString() ?? '');
+    if (!_coolingEligible ||
+        total == null ||
+        total <= 0 ||
+        contractId == null ||
+        contractId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cooling-period closure is no longer available'),
+        ),
+      );
+      return;
+    }
+    await _startCashfreeCheckout(
+      amount: total,
+      contractId: contractId,
+      purpose: 'cooling_closure',
+      successMessage: 'Loan closed successfully',
+      failureMessage: 'Could not start loan closure payment',
+    );
+  }
+
+  Future<void> _startForeclosureCheckout() async {
+    final foreclosure = _foreclosure;
+    final contractId = _contractId?.trim();
+    final rawTotal = foreclosure?['totalAmount'];
+    final total = rawTotal is num
+        ? rawTotal.round()
+        : double.tryParse(rawTotal?.toString() ?? '')?.round();
+    if (!_foreclosureEligible ||
+        total == null ||
+        total <= 0 ||
+        contractId == null ||
+        contractId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Foreclosure is not available for this loan')),
+      );
+      return;
+    }
+    await _startCashfreeCheckout(
+      amount: total,
+      contractId: contractId,
+      purpose: 'foreclosure',
+      successMessage: 'Loan foreclosed successfully',
+      failureMessage: 'Could not start foreclosure payment',
+    );
+  }
+
+  Future<void> _startCashfreeCheckout({
+    required num amount,
+    required String contractId,
+    required String purpose,
+    required String successMessage,
+    required String failureMessage,
+  }) async {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -393,13 +567,14 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
           await ref.read(emiPaymentRepositoryProvider).createEmiCheckout(
                 amount: amount,
                 contractId: contractId,
+                purpose: purpose,
               );
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
 
       if (result.mockPaid) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('EMI payment recorded')),
+          SnackBar(content: Text(successMessage)),
         );
         await _load();
         return;
@@ -426,7 +601,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start EMI payment')),
+        SnackBar(content: Text(failureMessage)),
       );
     }
   }
@@ -585,6 +760,31 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                     size: 18,
                                     weight: FontWeight.w600,
                                   ),
+                                ),
+                              ),
+                            if (_coolingEligible)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                                child: _CoolingPeriodBanner(
+                                  countdown: _coolingCountdownLabel,
+                                  totalAmount: _formatAmount(
+                                    _coolingPeriod?['totalAmount'],
+                                  ),
+                                  onCloseLoan: () =>
+                                      setState(() => _coolingModal = true),
+                                ),
+                              ),
+                            if (_foreclosureEligible)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                                child: _ForeclosureBanner(
+                                  totalAmount: _formatAmount(
+                                    _foreclosure?['totalAmount'],
+                                  ),
+                                  onForeclose: () =>
+                                      setState(() => _foreclosureModal = true),
                                 ),
                               ),
                             if (!_showCancelledReasons)
@@ -838,6 +1038,33 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
             onPay: () {
               setState(() => _paymentModal = false);
               _startEmiCheckout();
+            },
+          ),
+        if (_coolingModal && _coolingEligible)
+          _CoolingCloseModal(
+            countdown: _coolingCountdownLabel,
+            principal: _formatAmount(_coolingPeriod?['principal']),
+            fee: _formatAmount(_coolingPeriod?['fee']),
+            gst: _formatAmount(_coolingPeriod?['gst']),
+            total: _formatAmount(_coolingPeriod?['totalAmount']),
+            onClose: () => setState(() => _coolingModal = false),
+            onPay: () {
+              setState(() => _coolingModal = false);
+              _startCoolingClosureCheckout();
+            },
+          ),
+        if (_foreclosureModal && _foreclosureEligible)
+          _ForeclosureModal(
+            principal: _formatAmount(_foreclosure?['principal']),
+            interest: _formatAmount(_foreclosure?['interestTillToday']),
+            chargePct: _foreclosureChargePctLabel,
+            charge: _formatAmount(_foreclosure?['foreclosureCharge']),
+            gst: _formatAmount(_foreclosure?['gst']),
+            total: _formatAmount(_foreclosure?['totalAmount']),
+            onClose: () => setState(() => _foreclosureModal = false),
+            onPay: () {
+              setState(() => _foreclosureModal = false);
+              _startForeclosureCheckout();
             },
           ),
         if (_cancelModal)
@@ -1301,6 +1528,484 @@ class _PayEmiModal extends StatelessWidget {
                           emiAmount == null
                               ? 'Pay EMI amount'
                               : 'Pay EMI amount (₹$emiAmount)',
+                          style: AppTypography.body(size: 14),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: AppColors.accentMint,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CoolingPeriodBanner extends StatelessWidget {
+  const _CoolingPeriodBanner({
+    required this.countdown,
+    required this.totalAmount,
+    required this.onCloseLoan,
+  });
+
+  final String countdown;
+  final String totalAmount;
+  final VoidCallback onCloseLoan;
+
+  @override
+  Widget build(BuildContext context) {
+    const purple = Color(0xFF633AB1);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Cooling period',
+            style: AppTypography.body(
+              size: 14,
+              weight: FontWeight.w600,
+              color: purple,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Close this loan within 24 hours by paying the disbursed amount + ₹150 + GST.',
+            style: AppTypography.body(
+              size: 12,
+              color: const Color(0xFF6B5B8C),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Time left',
+                      style: AppTypography.body(
+                        size: 11,
+                        color: const Color(0xFF6B5B8C),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      countdown,
+                      style: AppTypography.body(
+                        size: 20,
+                        weight: FontWeight.w700,
+                        color: purple,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 46,
+                width: 151,
+                child: Material(
+                  color: purple,
+                  borderRadius: BorderRadius.circular(7),
+                  child: InkWell(
+                    onTap: onCloseLoan,
+                    borderRadius: BorderRadius.circular(7),
+                    child: Center(
+                      child: Text(
+                        'Close loan',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.body(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Payable $totalAmount',
+            style: AppTypography.body(
+              size: 12,
+              color: const Color(0xFF6B5B8C),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoolingCloseModal extends StatelessWidget {
+  const _CoolingCloseModal({
+    required this.countdown,
+    required this.principal,
+    required this.fee,
+    required this.gst,
+    required this.total,
+    required this.onClose,
+    required this.onPay,
+  });
+
+  final String countdown;
+  final String principal;
+  final String fee;
+  final String gst;
+  final String total;
+  final VoidCallback onClose;
+  final VoidCallback onPay;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, String value, {bool bold = false}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.body(
+                  size: 14,
+                  weight: bold ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: AppTypography.body(
+                size: 14,
+                weight: bold ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.black54,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            color: Color.fromRGBO(48, 14, 113, 1),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close, color: Colors.white, size: 25),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+                child: Row(
+                  children: [
+                    Text(
+                      'Close loan',
+                      style: AppTypography.body(
+                        size: 18,
+                        weight: FontWeight.w600,
+                        color: AppColors.accentMint,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Ends in $countdown',
+                      style: AppTypography.body(size: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 18, 10, 0),
+                child: Text(
+                  'Pay only the disbursed amount plus a flat fee during the cooling period.',
+                  style: AppTypography.body(
+                    size: 12,
+                    color: const Color(0xFFAC9FC6),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                child: Column(
+                  children: [
+                    row('Disbursed amount', principal),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('Cooling fee', fee),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('GST (18%)', gst),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('Total payable', total, bold: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              GestureDetector(
+                onTap: onPay,
+                child: Container(
+                  height: 50,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3E1982),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Pay & close loan ($total)',
+                          style: AppTypography.body(size: 14),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: AppColors.accentMint,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ForeclosureBanner extends StatelessWidget {
+  const _ForeclosureBanner({
+    required this.totalAmount,
+    required this.onForeclose,
+  });
+
+  final String totalAmount;
+  final VoidCallback onForeclose;
+
+  @override
+  Widget build(BuildContext context) {
+    const purple = Color(0xFF633AB1);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Foreclose loan',
+            style: AppTypography.body(
+              size: 14,
+              weight: FontWeight.w600,
+              color: purple,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Close your loan anytime by paying outstanding principal, interest till today, foreclosure charge and GST.',
+            style: AppTypography.body(
+              size: 12,
+              color: const Color(0xFF6B5B8C),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Payable $totalAmount',
+                  style: AppTypography.body(
+                    size: 14,
+                    weight: FontWeight.w600,
+                    color: purple,
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 46,
+                width: 151,
+                child: Material(
+                  color: purple,
+                  borderRadius: BorderRadius.circular(7),
+                  child: InkWell(
+                    onTap: onForeclose,
+                    borderRadius: BorderRadius.circular(7),
+                    child: Center(
+                      child: Text(
+                        'Foreclose',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.body(
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ForeclosureModal extends StatelessWidget {
+  const _ForeclosureModal({
+    required this.principal,
+    required this.interest,
+    required this.chargePct,
+    required this.charge,
+    required this.gst,
+    required this.total,
+    required this.onClose,
+    required this.onPay,
+  });
+
+  final String principal;
+  final String interest;
+  final String chargePct;
+  final String charge;
+  final String gst;
+  final String total;
+  final VoidCallback onClose;
+  final VoidCallback onPay;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, String value, {bool bold = false}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.body(
+                  size: 14,
+                  weight: bold ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: AppTypography.body(
+                size: 14,
+                weight: bold ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.black54,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            color: Color.fromRGBO(48, 14, 113, 1),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close, color: Colors.white, size: 25),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+                child: Text(
+                  'Foreclose loan',
+                  style: AppTypography.body(
+                    size: 18,
+                    weight: FontWeight.w600,
+                    color: AppColors.accentMint,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 18, 10, 0),
+                child: Text(
+                  'Pay outstanding principal, interest till today, product foreclosure charge, and GST on the charge.',
+                  style: AppTypography.body(
+                    size: 12,
+                    color: const Color(0xFFAC9FC6),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                child: Column(
+                  children: [
+                    row('Outstanding principal', principal),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('Interest till today', interest),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('Foreclosure charge ($chargePct)', charge),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('GST on charge (18%)', gst),
+                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    row('Total payable', total, bold: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              GestureDetector(
+                onTap: onPay,
+                child: Container(
+                  height: 50,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3E1982),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Pay & foreclose ($total)',
                           style: AppTypography.body(size: 14),
                         ),
                       ),

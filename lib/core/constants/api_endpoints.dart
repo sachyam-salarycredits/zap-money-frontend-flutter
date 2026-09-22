@@ -36,14 +36,14 @@ class ApiEndpoints {
       '$url/cashfree-emi-payment-success';
   static String get customerInformation => '$url/customerInformation';
   static String get getSFAccountStatus => '$url/GetSFAccountStatus';
-  static String get permissionDataStore =>
-      '$apiPhpService/permissionDataStore';
+  static String get permissionDataStore => '$apiPhpService/permissionDataStore';
   static String get storeCustomerDeviceLocation =>
       '$url/StoreCustomerDeviceLocation';
 
   // Profile / KYC prep
   static String get storeCustomerInformation =>
       '$url/Store_customer_information/';
+  static String get checkCustomerUniqueness => '$url/CheckCustomerUniqueness';
   static String get panDetails => '$url/PanDetails';
   static String get pullCreditBureau => '$url/pullCreditBureau';
   static String get validatescore => '$url/validatescore';
@@ -52,19 +52,21 @@ class ApiEndpoints {
   static String get sendBureauConsentOtp => '$url/sendBureauConsentOtp';
   static String get verifyBureauConsentOtp => '$url/verifyBureauConsentOtp';
   static String get storeBankInfo => '$url/StoreBankInfo';
-  static String get getBankAccountInformation => '$url/GetBankAccountInformation';
+  static String get getBankAccountInformation =>
+      '$url/GetBankAccountInformation';
   static String get getIfscInfo => '$url/getbankaccountinfo/';
   static String get storeEmpInfo => '$url/StoreEmpInfo';
   static String get storeOfficeAddress => '$url/StoreOfficeAddress/';
   static String get saveDocument => '$url/save_document';
+  static String get getProfileIcon => '$url/getProfileIcon';
   static String get storeAddressInfo => '$url/StoreAddressInfo';
   static String get getLocalities => '$url/get_localitie/';
   static String get getSubLocalities => '$url/get_sublocalitie/';
-  static String get fetchCity =>
-      '$apiPythonService/addressAutofill/getCity';
+  static String get fetchCity => '$apiPythonService/addressAutofill/getCity';
   static String get creditDecision => '$url/CreditDecision';
   static String get getCreditDecisionInformation =>
       '$url/GetCreditDecisionInformation';
+  static String get submitLoanAmountRequest => '$url/SubmitLoanAmountRequest';
   static String get storeFinalOfferSelection => '$url/StoreFinalOfferSelection';
   static String get getFinalOfferSelection => '$url/GetFinalOfferSelection';
   static String get storeOfferSelection => '$url/StoreOfferSelection';
@@ -82,6 +84,8 @@ class ApiEndpoints {
   static String get digilockerComplete => '$url/digilockerComplete';
   static String get uploadDkycResponse => '$url/dkycFrontendResponse';
   static String get esignStatus => '$url/EsignStatus';
+  static String get saveReferenceNumber => '$url/save_reference_number';
+  static String get getLoanReferences => '$url/GetLoanReferences';
 
   // eNACH / UPI mandate
   static String get getEnachInformation => '$url/GetENACHInformation';
@@ -94,7 +98,15 @@ class ApiEndpoints {
   static String get createMandate => '$url/create-mandate/';
   static String get upiCurrentStatus => '$url/upi_current_status/';
 
-  // Finbit AA / net banking
+  // Finarkein AA (Phase A — replaces Finbit bank journey)
+  static String get finarkeinConsentInitiate =>
+      '$url/api/finarkein/consent/initiate/';
+  static String finarkeinRunStatus(String requestId) =>
+      '$url/api/finarkein/runs/$requestId/';
+  static String finarkeinRunSync(String requestId) =>
+      '$url/api/finarkein/runs/$requestId/sync/';
+
+  // Legacy Finbit endpoints (retired when MONEXO_BANK_ANALYTICS_PROVIDER=finarkein)
   static String get getFinbitUrl => '$url/finbitTokenGeneration';
   static String get finbitBankVerification => '$url/finbitBankVerification';
   static String get uploadFinbitBankStatement =>
