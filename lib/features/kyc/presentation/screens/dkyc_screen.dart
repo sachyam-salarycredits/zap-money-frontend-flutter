@@ -202,8 +202,21 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
       }
       await ref.read(screenStatusServiceProvider).completeVkyc();
       ref.read(homeRefreshTickProvider.notifier).state++;
-      // KYC completion is followed by the mandate for the selected contract.
-      if (mounted) context.go(AppRoutes.enach);
+      var offerAccepted = false;
+      var bureauDone = false;
+      try {
+        final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
+        offerAccepted = bundle.flags.pl || bundle.flags.dc;
+        bureauDone = bundle.flags.equifax;
+      } catch (_) {
+        // A first-time KYC continues to the credit bureau.
+      }
+      if (!mounted) return;
+      if (offerAccepted) {
+        context.go(AppRoutes.home);
+      } else {
+        context.go(bureauDone ? AppRoutes.locationPermission : AppRoutes.equifax);
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('digilocker finish error → $e');
       _showError(
@@ -254,6 +267,11 @@ class _DkycScreenState extends ConsumerState<DkycScreen> {
             const SizedBox(height: 16),
             Text(_message!, style: AppTypography.body(size: 14)),
           ],
+          const SizedBox(height: 24),
+          TextButton(
+            onPressed: () => context.push(AppRoutes.ckyc),
+            child: const Text('Retrieve CKYC from registry (OTP)'),
+          ),
         ],
       ),
     );

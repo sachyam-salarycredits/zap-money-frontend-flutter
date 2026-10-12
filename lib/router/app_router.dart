@@ -20,6 +20,7 @@ import '../features/funnel/presentation/screens/permission_screen.dart';
 import '../features/funnel/presentation/screens/personal_info_screen.dart';
 import '../features/funnel/presentation/screens/profession_screen.dart';
 import '../features/funnel/presentation/screens/referred_screen.dart';
+import '../features/kyc/presentation/screens/ckyc_screen.dart';
 import '../features/kyc/presentation/screens/dkyc_screen.dart';
 import '../features/kyc/presentation/screens/email_verification_screen.dart';
 import '../features/onboarding/presentation/screens/onboarding_screen.dart';
@@ -186,6 +187,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.dkyc,
         builder: (context, state) => const DkycScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.ckyc,
+        builder: (context, state) => const CkycScreen(),
       ),
       GoRoute(
         path: AppRoutes.esign,

@@ -37,19 +37,17 @@ class FinarkeinIngestService {
     return raw?.replaceAll('"', '');
   }
 
-  /// Fire-and-forget polling until READY / FAILED (survives leaving FinbitScreen).
+  /// Remember the consent run. LOS downloads the report; the app does not.
   void startBackground(String requestId) {
     if (requestId.isEmpty) return;
     _activeRequestId = requestId;
     unawaited(persistRequestId(requestId));
-    unawaited(_runLoop(requestId));
   }
 
-  /// True when Finarkein reports consent approved (ACTIVE) or run already past
-  /// consent (READY / in-flight ingest). Mock request ids always pass.
+  /// True when every consent slot is ACTIVE.
   ///
   /// Used before leaving Bank validation → Residence so kill/abandon mid-OTP
-  /// cannot advance the funnel.
+  /// cannot advance the funnel. The bank report is not required.
   Future<bool> waitUntilConsentApproved({
     required String requestId,
     Duration maxWait = const Duration(seconds: 45),
@@ -57,18 +55,18 @@ class FinarkeinIngestService {
   }) async {
     final id = requestId.trim();
     if (id.isEmpty) return false;
-    if (id.toLowerCase().startsWith('mock-')) return true;
+    await _enqueuePoll(id);
 
     final deadline = DateTime.now().add(maxWait);
     while (true) {
-      final payload = await _refreshStatus(id);
+      final payload = await _getStatus(id);
       if (_payloadHasApprovedConsent(payload)) return true;
       final lifecycle = payload?['lifecycle']?.toString().toUpperCase();
       if (lifecycle == 'FAILED') return false;
       if (!DateTime.now().isBefore(deadline)) break;
       await Future<void>.delayed(interval);
     }
-    final last = await _refreshStatus(id);
+    final last = await _getStatus(id);
     return _payloadHasApprovedConsent(last);
   }
 
@@ -128,27 +126,20 @@ class FinarkeinIngestService {
     return resp is Map ? resp : root;
   }
 
-  /// Consent ACTIVE, or lifecycle already past AA approval.
+  /// Every returned consent must be ACTIVE. One approved slot is not enough.
   bool _payloadHasApprovedConsent(Map? payload) {
     if (payload == null) return false;
-    final lifecycle = payload['lifecycle']?.toString().toUpperCase();
-    if (lifecycle == 'READY' ||
-        lifecycle == 'FETCHED' ||
-        lifecycle == 'PROJECTING' ||
-        lifecycle == 'PARTIAL') {
-      return true;
-    }
     final consents = payload['consents'];
-    if (consents is! List) return false;
+    if (consents is! List || consents.isEmpty) return false;
     for (final item in consents) {
-      if (item is! Map) continue;
+      if (item is! Map) return false;
       final status =
           (item['consent_status'] ?? item['consentStatus'] ?? '')
               .toString()
               .toUpperCase();
-      if (status == 'ACTIVE') return true;
+      if (status != 'ACTIVE') return false;
     }
-    return false;
+    return true;
   }
 
   Future<Map?> _getStatus(String requestId) async {
@@ -167,34 +158,24 @@ class FinarkeinIngestService {
     }
   }
 
-  /// GET cached status; POST sync until lifecycle is READY/FAILED.
-  ///
-  /// Do **not** stop syncing just because consent is ACTIVE — ACTIVE only means
-  /// the user approved AA; result ingest still needs sync to reach READY.
-  Future<Map?> _refreshStatus(String requestId) async {
-    final statusPayload = await _getStatus(requestId);
-    final lifecycle = statusPayload?['lifecycle']?.toString().toUpperCase();
-    if (lifecycle == 'READY' || lifecycle == 'FAILED') return statusPayload;
-
+  /// Ask Celery to poll Finarkein. The request returns the saved status.
+  Future<void> _enqueuePoll(String requestId) async {
     try {
-      final syncRes = await _dio.post(
+      await _dio.post(
         ApiEndpoints.finarkeinRunSync(requestId),
         data: {},
         options: Options(
           contentType: Headers.jsonContentType,
           extra: {'useBearer': true},
-          receiveTimeout: const Duration(minutes: 3),
-          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 15),
+          sendTimeout: const Duration(seconds: 15),
         ),
       );
-      return _unwrap(syncRes.data) ?? statusPayload;
-    } catch (_) {
-      return statusPayload;
-    }
+    } catch (_) {}
   }
 
   Future<String?> _syncOnce(String requestId) async {
-    final payload = await _refreshStatus(requestId);
+    final payload = await _getStatus(requestId);
     return payload?['lifecycle']?.toString().toUpperCase();
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -44,6 +45,13 @@ class _MandateWebViewScreenState extends State<MandateWebViewScreen> {
         NavigationDelegate(
           onNavigationRequest: (request) {
             _maybeComplete(request.url);
+            if (_shouldLaunchExternally(request.url)) {
+              launchUrl(
+                Uri.parse(request.url),
+                mode: LaunchMode.externalApplication,
+              );
+              return NavigationDecision.prevent;
+            }
             return NavigationDecision.navigate;
           },
           onUrlChange: (change) {
@@ -53,7 +61,32 @@ class _MandateWebViewScreenState extends State<MandateWebViewScreen> {
           onPageFinished: _maybeComplete,
         ),
       )
-      ..loadRequest(Uri.parse(widget.initialUrl));
+      ..loadRequest(
+        Uri.parse(widget.initialUrl),
+        headers: _requestHeadersFor(widget.initialUrl),
+      );
+  }
+
+  static Map<String, String> _requestHeadersFor(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.host.contains('ngrok')) {
+      return const {};
+    }
+    final origin = '${uri.scheme}://${uri.host}/';
+    return {
+      'ngrok-skip-browser-warning': 'true',
+      'Referer': origin,
+    };
+  }
+
+  static bool _shouldLaunchExternally(String url) {
+    final lower = url.toLowerCase();
+    return lower.startsWith('upi:') ||
+        lower.startsWith('phonepe:') ||
+        lower.startsWith('paytmmp:') ||
+        lower.startsWith('tez:') ||
+        lower.startsWith('gpay:') ||
+        lower.contains('intent://');
   }
 
   void _maybeComplete(String url) {

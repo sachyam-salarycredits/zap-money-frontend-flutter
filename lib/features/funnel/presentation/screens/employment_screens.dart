@@ -378,7 +378,6 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       // Mid-funnel / profile edit still lands on bank when not unlocking.
       if (widget.isFrom == 'unlockOffer' ||
           widget.isFrom == 'postResidence') {
-        // After residence (first-time) or unlock: run CD on Waiting.
         context.go(AppRoutes.waiting);
       } else if (widget.isFrom == 'repeatLoan') {
         // A repeat application needs a newly uploaded income document before

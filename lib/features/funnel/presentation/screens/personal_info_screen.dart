@@ -265,7 +265,9 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen> {
       }
 
       await ref.read(screenStatusServiceProvider).completePersonalInfo();
-      if (mounted) context.go(AppRoutes.equifax);
+      if (mounted) {
+        context.go(AppRoutes.emailVerification, extra: email);
+      }
     } on DioException catch (e) {
       final msg = e.response?.data is Map
           ? e.response!.data['msg']?.toString()

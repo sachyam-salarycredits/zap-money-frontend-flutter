@@ -12,6 +12,7 @@ import '../../../authentication/presentation/providers/auth_providers.dart';
 import '../../../dashboard/data/home_repository.dart';
 import '../../data/enach_repository.dart';
 import 'mandate_webview_screen.dart';
+import 'upi_mandate_intent_screen.dart';
 
 class EnachScreen extends ConsumerStatefulWidget {
   const EnachScreen({super.key});
@@ -22,7 +23,6 @@ class EnachScreen extends ConsumerStatefulWidget {
 
 class _EnachScreenState extends ConsumerState<EnachScreen> {
   bool _loading = true;
-  bool _upiEnabled = false;
   String? _error;
   String _emiDay = '5';
   String _method = '2'; // 1=UPI, 2=netbanking, 3=debitcard
@@ -45,14 +45,12 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
       final repo = ref.read(enachRepositoryProvider);
       final info = await repo.getEnachInformation();
       final ensured = await repo.ensureEnachAmountOnBank(enachInfo: info);
-      final upi = await repo.isUpiEnabled();
       if (mounted) {
         setState(() {
           _enachInfo = {
             ...?info,
             ...?ensured,
           };
-          _upiEnabled = upi;
           _loading = false;
         });
       }
@@ -66,7 +64,18 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
     }
   }
 
-  String get _authMode => _method == '3' ? 'debitcard' : 'netbanking';
+  String get _authMode {
+    if (_method == '1') return 'upi';
+    if (_method == '3') return 'debitcard';
+    return 'netbanking';
+  }
+
+  double get _emiAmount {
+    final raw = _enachInfo?['enach_amount'];
+    return double.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  bool get _upiAllowed => _emiAmount <= 0 || _emiAmount <= 15000;
 
   Future<void> _proceed() async {
     ref.read(globalLoadingProvider.notifier).state = true;
@@ -97,21 +106,26 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
         });
       }
 
-      if (_method == '1') {
-        if (!mounted) return;
-        context.push(AppRoutes.enachUpi, extra: {
-          'amount': amount.toString(),
-          'account': (_enachInfo?['bank_account_number'] ??
-                  ensured?['bank_account_number'])
-              ?.toString() ??
-              '',
-        });
+      if (_method == '1' && !_upiAllowed) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'UPI Autopay supports up to ₹15,000. Use net banking or debit card.',
+              ),
+            ),
+          );
+        }
         return;
       }
 
       final created = await repo.createSource(authMode: _authMode);
       final url = created?['mandate_url']?.toString();
-      if (url == null || url.isEmpty) {
+      final intent = created?['upi_intent'];
+      final hasIntent = intent is Map &&
+          ((intent['default']?.toString().trim().isNotEmpty ?? false) ||
+              (intent['apps'] is Map && (intent['apps'] as Map).isNotEmpty));
+      if (!hasIntent && (url == null || url.isEmpty)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -124,18 +138,32 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
         return;
       }
       if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => MandateWebViewScreen(
-            initialUrl: url,
-            onSuccess: () async {
-              Navigator.of(context).pop();
-              await _pollAndGoHome();
-            },
-            onClose: () => context.go(AppRoutes.home),
+      if (_method == '1' && hasIntent) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => UpiMandateIntentScreen(
+              intent: Map<String, dynamic>.from(intent),
+              mandateUrl: url,
+              onApproved: () async {
+                Navigator.of(context).pop();
+                await _pollAndGoHome();
+              },
+              onWebCheckout: url == null || url.isEmpty
+                  ? null
+                  : () {
+                      Navigator.of(context).pop();
+                      _openHostedCheckout(url);
+                    },
+              onClose: () => context.go(AppRoutes.home),
+            ),
           ),
-        ),
-      );
+        );
+        return;
+      }
+      if (url == null || url.isEmpty) {
+        return;
+      }
+      await _openHostedCheckout(url);
     } catch (e) {
       if (mounted) {
         final msg = e is DioException && e.response?.data is Map
@@ -151,9 +179,25 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
     }
   }
 
+  Future<void> _openHostedCheckout(String url) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MandateWebViewScreen(
+          initialUrl: url,
+          onSuccess: () async {
+            Navigator.of(context).pop();
+            await _pollAndGoHome();
+          },
+          onClose: () => context.go(AppRoutes.home),
+        ),
+      ),
+    );
+  }
+
   Future<void> _pollAndGoHome() async {
     final repo = ref.read(enachRepositoryProvider);
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 12; i++) {
       try {
         if (await repo.checkSourceStatus()) break;
       } catch (_) {}
@@ -215,14 +259,24 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
                 const SizedBox(height: 24),
                 Text('Payment method', style: AppTypography.headline(size: 16)),
                 const SizedBox(height: 8),
-                if (_upiEnabled)
-                  RadioListTile<String>(
-                    value: '1',
-                    groupValue: _method,
-                    onChanged: (v) => setState(() => _method = v!),
-                    title: Text('UPI', style: AppTypography.body(size: 15)),
-                    activeColor: AppColors.accentMint,
+                RadioListTile<String>(
+                  value: '1',
+                  groupValue: _method,
+                  onChanged: _upiAllowed
+                      ? (v) => setState(() => _method = v!)
+                      : null,
+                  title: Text(
+                    'UPI Autopay',
+                    style: AppTypography.body(size: 15),
                   ),
+                  subtitle: Text(
+                    _upiAllowed
+                        ? 'Approve in your UPI app. Same EMI collection as eNACH.'
+                        : 'Available only when EMI is ₹15,000 or less.',
+                    style: AppTypography.body(size: 12, color: AppColors.muted),
+                  ),
+                  activeColor: AppColors.accentMint,
+                ),
                 RadioListTile<String>(
                   value: '2',
                   groupValue: _method,

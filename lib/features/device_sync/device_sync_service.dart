@@ -40,16 +40,41 @@ class DeviceSyncService {
       ),
     );
     final deviceId = await _deviceId();
+    final customerId =
+        (await _storage.read(StorageKeys.customerId))?.replaceAll('"', '');
+    final lat = position.latitude.toString();
+    final lng = position.longitude.toString();
     await _dio.post(
       ApiEndpoints.storeCustomerDeviceLocation,
       data: {
         'device_id': deviceId,
-        'latitude': position.latitude.toString(),
-        'longitude': position.longitude.toString(),
+        'latitude': lat,
+        'longitude': lng,
         'action': 'GeolocationInfo',
       },
       options: Options(contentType: Headers.jsonContentType),
     );
+    if (customerId == null || customerId.isEmpty) return;
+    final customerIdPayload = int.tryParse(customerId) ?? customerId;
+    final locationBody = {
+      'customer_id': customerIdPayload,
+      'latitude': lat,
+      'longitude': lng,
+    };
+    try {
+      await _dio.post(
+        ApiEndpoints.getLocationDetails,
+        data: locationBody,
+        options: Options(contentType: Headers.jsonContentType),
+      );
+      await _dio.post(
+        ApiEndpoints.getLocationDecision,
+        data: locationBody,
+        options: Options(contentType: Headers.jsonContentType),
+      );
+    } catch (_) {
+      // Non-fatal — device row + backend backfill may still apply.
+    }
   }
 
   Future<void> _syncDeviceAndPermissions() async {

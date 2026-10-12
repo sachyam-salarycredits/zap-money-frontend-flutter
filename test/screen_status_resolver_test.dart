@@ -12,11 +12,11 @@ void main() {
     expect(route, AppRoutes.home);
   });
 
-  test('ocr_completed routes to enach before later flags', () {
+  test('ocr_completed continues the bureau path instead of eNACH', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(ocr: true, personalInfo: true),
     );
-    expect(route, AppRoutes.enach);
+    expect(route, AppRoutes.equifax);
   });
 
   test('pl_completed without KYC routes to DigiLocker', () {
@@ -28,13 +28,13 @@ void main() {
     expect(route, AppRoutes.dkyc);
   });
 
-  test('pl_completed with KYC routes to eNACH', () {
+  test('pl_completed with KYC routes home until the loan is funded', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(pl: true),
       userType: 'Student',
       kycComplete: true,
     );
-    expect(route, AppRoutes.enach);
+    expect(route, AppRoutes.home);
   });
 
   test('dc_completed without KYC routes to DigiLocker', () {
@@ -45,13 +45,13 @@ void main() {
     expect(route, AppRoutes.dkyc);
   });
 
-  test('dc_completed with KYC routes to eNACH', () {
+  test('dc_completed with KYC routes home until the loan is funded', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(dc: true),
       userType: 'Salaried',
       kycComplete: true,
     );
-    expect(route, AppRoutes.enach);
+    expect(route, AppRoutes.home);
   });
 
   test('pl + KYC + enach still routes to home', () {
@@ -92,6 +92,32 @@ void main() {
       flags: const ScreenCompletionFlags(permission: true),
     );
     expect(route, AppRoutes.profession);
+  });
+
+  test('personal details without KYC routes to email verification first', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(personalInfo: true),
+    );
+    expect(route, AppRoutes.emailVerification);
+  });
+
+  test('personal details with KYC routes to the credit bureau', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(personalInfo: true, vkyc: true),
+    );
+    expect(route, AppRoutes.equifax);
+  });
+
+  test('address after bureau routes to the amount request', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(
+        equifax: true,
+        bankDetails: true,
+        addressSelection: true,
+        vkyc: true,
+      ),
+    );
+    expect(route, AppRoutes.waiting);
   });
 
   test('bankDetails without finbit routes to residence (AA ingest background)', () {

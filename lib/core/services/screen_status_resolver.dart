@@ -121,19 +121,18 @@ class ScreenStatusResolver {
   const ScreenStatusResolver();
 
   /// [userType] retained for callers; after equifax all types go to location.
-  /// When PL/DC is done, [kycComplete] gates DigiLocker vs eNACH — DigiLocker
-  /// writes `vkyc_completed` (not `ocr_completed`), so KYC alone must still
-  /// force a mandate sized for the accepted offer before Home/funding.
+  /// When PL/DC is done, [kycComplete] gates DigiLocker vs Home. eNACH is
+  /// collected after the loan is funded, not before funding starts.
   String resolve({
     required ScreenCompletionFlags flags,
     String? userType,
     String customerPlan = '1',
     bool kycComplete = false,
   }) {
+    final kycDone = kycComplete || flags.ocr || flags.vkyc;
     if (flags.enach) return AppRoutes.home;
-    if (flags.ocr) return AppRoutes.enach;
     if (flags.pl || flags.dc) {
-      if (kycComplete) return AppRoutes.enach;
+      if (kycDone) return AppRoutes.home;
       return AppRoutes.dkyc;
     }
     if (flags.addressSelection) return AppRoutes.waiting;
@@ -149,6 +148,8 @@ class ScreenStatusResolver {
       // After equifax → location, then Bank account Validation (Finarkein).
       return AppRoutes.locationPermission;
     }
+    // Email is verified right after Aadhaar/email are saved, before DigiLocker.
+    if (flags.personalInfo && !kycDone) return AppRoutes.emailVerification;
     if (flags.personalInfo) return AppRoutes.equifax;
     if (flags.permission) return AppRoutes.profession;
     return AppRoutes.permission;

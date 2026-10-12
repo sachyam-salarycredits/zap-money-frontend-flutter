@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../core/constants/api_endpoints.dart';
@@ -564,13 +566,13 @@ class _FinbitScreenState extends ConsumerState<FinbitScreen> {
       _sawConsentReturn = false;
       if (!mounted) return;
       _toast(
-        'Consent not completed yet. Open bank validation again after approving.',
+        'All consents are not active yet. Open bank validation again after approving each one.',
       );
       return;
     }
 
     _sawConsentReturn = true;
-    // Consent approved — ingest continues in background while user fills residence.
+    // Consent is enough to continue. LOS fetches the bank report later.
     try {
       await ref.read(screenStatusServiceProvider).completeBank();
     } catch (_) {}
@@ -804,13 +806,22 @@ class ResidenceAddressScreen extends ConsumerStatefulWidget {
 
 class _ResidenceAddressScreenState
     extends ConsumerState<ResidenceAddressScreen> {
+  static const _proofTypes = <String, String>{
+    'electricity_bill': 'Electricity bill',
+    'water_bill': 'Water bill',
+    'rent_agreement': 'Rent agreement',
+  };
+
   final _address = TextEditingController();
   final _postal = TextEditingController();
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _locality = TextEditingController();
   final _sublocality = TextEditingController();
+  final _picker = ImagePicker();
   bool _lookingUpPin = false;
+  String _proofType = 'electricity_bill';
+  XFile? _proofPhoto;
 
   @override
   void dispose() {
@@ -962,12 +973,25 @@ class _ResidenceAddressScreenState
       ).showSnackBar(const SnackBar(content: Text('Enter city and state')));
       return;
     }
+    if (_proofPhoto == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Add a photo of an electricity bill, water bill, or rent agreement that shows this address',
+          ),
+        ),
+      );
+      return;
+    }
 
     ref.read(globalLoadingProvider.notifier).state = true;
     try {
       final storage = ref.read(sessionStorageProvider);
       final customerId = (await storage.read(
         StorageKeys.customerId,
+      ))?.replaceAll('"', '');
+      final sfCustomerId = (await storage.read(
+        StorageKeys.sfCustomerId,
       ))?.replaceAll('"', '');
       if (customerId == null || customerId.isEmpty) {
         if (!mounted) return;
@@ -1011,12 +1035,40 @@ class _ResidenceAddressScreenState
         return;
       }
 
+      final form = FormData.fromMap({
+        'document_name': 'address_proof',
+        'document_type': _proofType,
+        'customer_id': customerId,
+        if (sfCustomerId != null && sfCustomerId.isNotEmpty)
+          'sf_customer_id': sfCustomerId,
+        'file': await MultipartFile.fromFile(
+          _proofPhoto!.path,
+          filename: _proofPhoto!.name,
+        ),
+      });
+      final upload = await ref.read(dioClientProvider).dio.post(
+        ApiEndpoints.saveDocument,
+        data: form,
+      );
+      final uploadBody = upload.data;
+      final uploadStatus = uploadBody is Map ? uploadBody['status'] : null;
+      if (uploadStatus != 200 && uploadStatus != '200') {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              (uploadBody is Map ? uploadBody['message']?.toString() : null) ??
+                  'Could not upload address proof',
+            ),
+          ),
+        );
+        return;
+      }
+
       await ref.read(screenStatusServiceProvider).completeAddress();
       // RN ResidenceAddress focus marks bankdetails_verified.
       await ref.read(screenStatusServiceProvider).completeBankVerified();
-      // First-time: employer after residence, then Waiting.
-      // Repeat loan already collected employer before bank/AA — skip the
-      // second Employer details prompt and go straight to credit decision.
+      // First-time: employer after residence, then the requested amount.
       var employerDone = false;
       try {
         final bundle = await ref
@@ -1134,9 +1186,136 @@ class _ResidenceAddressScreenState
           const SizedBox(height: 16),
           _label('Sublocality'),
           _field(controller: _sublocality, hint: 'Enter sublocality'),
+          const SizedBox(height: 24),
+          _label('Address proof*'),
+          Text(
+            'Upload a photo of a document that shows the same address: electricity bill, water bill, or rent agreement.',
+            style: AppTypography.body(size: 13, color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _proofType,
+            dropdownColor: const Color(0xFF3E1982),
+            style: AppTypography.body(size: 16),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.08),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            items: _proofTypes.entries
+                .map(
+                  (entry) => DropdownMenuItem(
+                    value: entry.key,
+                    child: Text(entry.value),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null) return;
+              setState(() => _proofType = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _pickProof,
+            icon: const Icon(Icons.add_a_photo_outlined, color: Colors.white),
+            label: Text(
+              _proofPhoto == null ? 'Add photo' : 'Change photo',
+              style: AppTypography.body(size: 15),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Colors.white24),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+          if (_proofPhoto != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(_proofPhoto!.path),
+                height: 160,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _pickProof() async {
+    final navInset = MediaQuery.viewPaddingOf(context).bottom;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: const Color(0xFF2A1466),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        Widget sourceButton(IconData icon, String label, ImageSource value) {
+          return Expanded(
+            child: InkWell(
+              onTap: () => Navigator.pop(ctx, value),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3E1982),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Icon(icon, color: Colors.white),
+                    const SizedBox(height: 8),
+                    Text(label, style: AppTypography.body(size: 13)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 28 + navInset),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Address proof photo',
+                style: AppTypography.body(size: 16, weight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  sourceButton(
+                    Icons.photo_camera_outlined,
+                    'Camera',
+                    ImageSource.camera,
+                  ),
+                  const SizedBox(width: 12),
+                  sourceButton(
+                    Icons.photo_library_outlined,
+                    'Gallery',
+                    ImageSource.gallery,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (source == null) return;
+    final file = await _picker.pickImage(source: source, imageQuality: 85);
+    if (file == null || !mounted) return;
+    setState(() => _proofPhoto = file);
   }
 }
 
@@ -1152,222 +1331,44 @@ class WaitingScreen extends ConsumerStatefulWidget {
 }
 
 class _WaitingScreenState extends ConsumerState<WaitingScreen> {
+  final _amount = TextEditingController();
   String? _error;
   bool _running = false;
-  bool _repeatLoan = false;
-  /// Shown under the title while polling / running CD.
-  String _statusMessage = 'We are preparing your credit decision…';
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
   }
 
-  Map<String, dynamic>? _offerRow(dynamic root) {
-    if (root is List && root.isNotEmpty && root.first is Map) {
-      return Map<String, dynamic>.from(root.first as Map);
-    }
-    if (root is Map) {
-      // CD error body: {error, msg, status: 403} — not an offer row.
-      final status = root['status'];
-      if (status == 403 || status == '403' || root.containsKey('error')) {
-        return Map<String, dynamic>.from(root);
-      }
-      final data = root['data'];
-      if (data is List && data.isNotEmpty && data.first is Map) {
-        return Map<String, dynamic>.from(data.first as Map);
-      }
-      if (data is Map) {
-        return Map<String, dynamic>.from(data);
-      }
-      return Map<String, dynamic>.from(root);
-    }
-    return null;
-  }
-
-  bool _navigateForStatus(String? status) {
-    final s = status?.toUpperCase();
-    if (s == 'APP') {
-      ref.read(homeRefreshTickProvider.notifier).state++;
-      context.go(_repeatLoan ? AppRoutes.offer : AppRoutes.home);
-      return true;
-    }
-    if (s == 'REJ') {
-      context.go(AppRoutes.rejected);
-      return true;
-    }
-    if (s == 'REF' || s == 'WIP') {
-      context.go(AppRoutes.referred, extra: {'status': s});
-      return true;
-    }
-    return false;
-  }
-
-  Future<String?> _fetchExistingOfferStatus(String customerId) async {
-    try {
-      final response = await ref
-          .read(dioClientProvider)
-          .dio
-          .post(
-            ApiEndpoints.getCreditDecisionInformation,
-            data: {'customer_id': customerId},
-            options: Options(contentType: Headers.jsonContentType),
-          );
-      final row = _offerRow(response.data);
-      final status = row?['status']?.toString();
-      if (status == '403' || status == null) return null;
-      return status;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _run() async {
+  Future<void> _submit() async {
     if (_running) return;
+    final digits = _amount.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final amount = int.tryParse(digits);
+    if (amount == null || amount < 1000) {
+      setState(() => _error = 'Minimum loan request is ₹1,000');
+      return;
+    }
+
     setState(() {
       _running = true;
       _error = null;
-      _statusMessage = 'We are preparing your credit decision…';
     });
-
     try {
-      final storage = ref.read(sessionStorageProvider);
-      final customerId = (await storage.read(
-        StorageKeys.customerId,
-      ))?.replaceAll('"', '');
-      if (customerId == null || customerId.isEmpty) {
-        setState(() => _error = 'Missing customer id — please re-login');
-        return;
-      }
-
-      _repeatLoan = widget.isTopUp;
-      if (!_repeatLoan) {
-        try {
-          final bundle = await ref
-              .read(homeRepositoryProvider)
-              .fetchHomeBundle();
-          _repeatLoan = bundle.home.topUpEligible && bundle.home.loanCompleted;
-        } catch (_) {
-          // Continue with the explicit route flag when Home is unavailable.
-        }
-      }
-
-      // AA consent may finish before Finarkein ingest. If we have a run id,
-      // do not call CD until READY — otherwise CD creates REF (manager review).
-      // Keep the wait short for UX; Retry if still processing (background sync
-      // already ran during residence + employer).
-      final ingest = ref.read(finarkeinIngestServiceProvider);
-      final finarkeinRequestId = await ingest.readRequestId();
-      if (finarkeinRequestId != null && finarkeinRequestId.isNotEmpty) {
-        if (mounted) {
-          setState(
-            () => _statusMessage = 'Confirming your bank data…',
-          );
-        }
-        bool ready = false;
-        try {
-          ready = await ingest.waitUntilReady(
-            requestId: finarkeinRequestId,
-            maxWait: const Duration(seconds: 60),
-            interval: const Duration(seconds: 5),
-          );
-        } catch (_) {
-          ready = false;
-        }
-        if (!ready) {
-          if (!mounted) return;
-          setState(
-            () => _error =
-                'Your bank data is still processing. Tap Retry in a moment — we will not run a decision until it is ready.',
-          );
-          return;
-        }
-      }
-
-      if (mounted) {
-        setState(
-          () => _statusMessage = 'We are running your credit decision…',
-        );
-      }
-
-      // CD can sleep ~30s waiting for Finbit name-match; allow retries.
-      const attempts = 5;
-      String? lastDetail;
-
-      for (var i = 0; i < attempts; i++) {
-        try {
-          final response = await ref
-              .read(dioClientProvider)
-              .dio
-              .post(
-                ApiEndpoints.creditDecision,
-                data: {'cust_id': customerId},
-                options: Options(
-                  contentType: Headers.jsonContentType,
-                  sendTimeout: const Duration(minutes: 2),
-                  receiveTimeout: const Duration(minutes: 2),
-                ),
-              );
-          if (!mounted) return;
-
-          final row = _offerRow(response.data);
-          final statusRaw = row?['status'];
-          final status = statusRaw?.toString().toUpperCase();
-
-          // Backend exception path returns JSON status 403 (often HTTP 200).
-          if (status == '403' || row?['error'] != null) {
-            final msg = row?['msg']?.toString();
-            lastDetail = msg ?? 'Credit decision failed on server';
-            // Offer may already exist from a prior run — check before giving up.
-            final existing = await _fetchExistingOfferStatus(customerId);
-            if (!mounted) return;
-            if (existing != null && _navigateForStatus(existing)) return;
-            if (i < attempts - 1) {
-              await Future<void>.delayed(const Duration(seconds: 8));
-              continue;
-            }
-            setState(() => _error = lastDetail);
-            return;
-          }
-
-          if (_navigateForStatus(status)) return;
-
-          // Unknown / empty — Finbit may still be processing.
-          lastDetail = status == null || status.isEmpty
-              ? 'Decision not ready yet'
-              : 'Decision pending ($status)';
-          final existing = await _fetchExistingOfferStatus(customerId);
-          if (!mounted) return;
-          if (existing != null && _navigateForStatus(existing)) return;
-
-          if (i < attempts - 1) {
-            await Future<void>.delayed(const Duration(seconds: 8));
-            continue;
-          }
-          setState(
-            () => _error =
-                '$lastDetail. Finbit/bureau data may still be processing — retry shortly.',
-          );
-        } on DioException catch (e) {
-          lastDetail = e.message ?? 'Network error';
-          final existing = await _fetchExistingOfferStatus(customerId);
-          if (!mounted) return;
-          if (existing != null && _navigateForStatus(existing)) return;
-          if (i < attempts - 1) {
-            await Future<void>.delayed(const Duration(seconds: 8));
-            continue;
-          }
-          setState(
-            () => _error =
-                'Could not run credit decision (${e.response?.statusCode ?? e.type}). Try again.',
-          );
-        }
-      }
+      await ref.read(homeRepositoryProvider).submitLoanAmountRequest(amount);
+      if (!mounted) return;
+      ref.read(homeRefreshTickProvider.notifier).state++;
+      context.go(AppRoutes.home);
+    } on DioException catch (error) {
+      if (!mounted) return;
+      final body = error.response?.data;
+      final message = body is Map ? body['msg']?.toString() : null;
+      setState(
+        () => _error = message ?? 'Could not submit your request. Try again.',
+      );
     } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Could not run credit decision. Try again.');
-      }
+      if (!mounted) return;
+      setState(() => _error = 'Could not submit your request. Try again.');
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -1376,44 +1377,28 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
   @override
   Widget build(BuildContext context) {
     return FunnelScaffold(
-      title: 'Hang tight',
-      subtitle: _error == null
-          ? _statusMessage
-          : 'Credit decision needs another try',
+      title: 'How much would you like to borrow?',
+      subtitle:
+          'Enter your preferred amount. Our team will review your profile and contact you.',
       showBack: false,
-      bottom: _error == null
-          ? null
-          : ZapSubmitButton(
-              title: 'Retry',
-              disabled: _running,
-              onPressed: _run,
-            ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: _error == null
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(
-                      color: AppColors.accentMint,
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      _statusMessage,
-                      textAlign: TextAlign.center,
-                      style: AppTypography.body(
-                        size: 14,
-                        color: AppColors.muted,
-                      ),
-                    ),
-                  ],
-                )
-              : Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.body(size: 14, color: AppColors.muted),
-                ),
+      bottom: ZapSubmitButton(
+        title: _running ? 'Submitting…' : 'Submit for review',
+        disabled: _running,
+        onPressed: _submit,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: TextField(
+          controller: _amount,
+          enabled: !_running,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(
+            labelText: 'Requested loan amount',
+            prefixText: '₹ ',
+            errorText: _error,
+          ),
+          onSubmitted: _running ? null : (_) => _submit(),
         ),
       ),
     );

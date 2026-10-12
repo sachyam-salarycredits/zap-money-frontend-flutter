@@ -72,7 +72,7 @@ void main() {
     expect(snap.emailVerified, isTrue);
   });
 
-  test('incomplete enach shows disbursal checklist', () {
+  test('missing eNACH does not block the funding card', () {
     final kind = resolver.resolve(
       home: HomeSnapshot.fromJson({
         'Customer': {
@@ -90,7 +90,7 @@ void main() {
       finbit: true,
       equifax: true,
     );
-    expect(kind, HomeCardKind.completeProcess);
+    expect(kind, HomeCardKind.funding);
   });
 
   test('vkyc without ocr still counts as KYC done → funding', () {
@@ -356,7 +356,7 @@ void main() {
     expect(kind, HomeCardKind.loanCompleted);
   });
 
-  test('a fresh approved offer wins over the repaid loan card', () {
+  test('a fresh APP + approved request wins over the repaid loan card', () {
     final kind = resolver.resolve(
       home: disbursedSnapshot({'Remaining_EMI__c': 0}),
       plOrDc: false,
@@ -371,6 +371,23 @@ void main() {
       loanRequestStatus: 'APPROVED',
     );
     expect(kind, HomeCardKind.creditOffer);
+  });
+
+  test('stale APPROVED request after closure shows repaid, not offer ready', () {
+    // System offer was archived; only Loan_Amount_Request.APPROVED remains.
+    final kind = resolver.resolve(
+      home: disbursedSnapshot({'Remaining_EMI__c': 0}),
+      plOrDc: false,
+      enach: false,
+      ocr: true,
+      vkyc: false,
+      bank: true,
+      bankVerified: true,
+      finbit: true,
+      equifax: true,
+      loanRequestStatus: 'APPROVED',
+    );
+    expect(kind, HomeCardKind.loanCompleted);
   });
 
   test('bank verified + APP without a request → amount request', () {
@@ -393,6 +410,39 @@ void main() {
       creditStatus: 'APP',
     );
     expect(kind, HomeCardKind.creditRequest);
+  });
+
+  test('pending amount request shows review before Finbit is fetched', () {
+    final kind = resolver.resolve(
+      home: HomeSnapshot.fromJson({}),
+      plOrDc: false,
+      enach: false,
+      ocr: false,
+      vkyc: false,
+      bank: true,
+      bankVerified: true,
+      finbit: false,
+      equifax: true,
+      loanRequestStatus: 'PENDING',
+    );
+    expect(kind, HomeCardKind.creditPending);
+  });
+
+  test('approved amount request shows offer before Finbit is fetched', () {
+    final kind = resolver.resolve(
+      home: HomeSnapshot.fromJson({}),
+      plOrDc: false,
+      enach: false,
+      ocr: false,
+      vkyc: false,
+      bank: true,
+      bankVerified: true,
+      finbit: false,
+      equifax: true,
+      creditStatus: 'APP',
+      loanRequestStatus: 'APPROVED',
+    );
+    expect(kind, HomeCardKind.creditOffer);
   });
 
   test('submitted amount request shows pending review', () {

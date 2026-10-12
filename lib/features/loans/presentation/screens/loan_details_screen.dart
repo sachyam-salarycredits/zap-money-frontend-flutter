@@ -305,7 +305,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
         detail?['loanStatus'] == 'Partial Application') {
       return s;
     }
-    if (detail?['loanStatus'] == 'Partial Application' || !enach || !vkyc) {
+    if (detail?['loanStatus'] == 'Partial Application' || !vkyc) {
       return 'In Progress';
     }
     if (s == 'Canceled' || s == 'Cancelled') {
@@ -1023,7 +1023,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
               setState(() => _stageModal = false);
               if (!_flags.vkyc) {
                 context.push(AppRoutes.dkyc);
-              } else if (!_flags.enach) {
+              } else if (display == 'Funded' && !_flags.enach) {
                 context.push(AppRoutes.enach);
               } else if (display == 'Funded') {
                 context.push(AppRoutes.esign);

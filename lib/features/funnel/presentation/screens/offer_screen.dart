@@ -337,8 +337,7 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
       if (!mounted) return;
       ref.read(homeRefreshTickProvider.notifier).state++;
 
-      // A new contract always needs a mandate sized for its selected EMI.
-      // Reuse KYC only when the closure reset retained a still-valid KYC flag.
+      // Mandate is collected after investors fund the loan, not at offer accept.
       var kycValid = false;
       try {
         final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
@@ -347,7 +346,7 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
         // Fail closed: KYC can be completed again if freshness is unknown.
       }
       if (!mounted) return;
-      context.go(kycValid ? AppRoutes.enach : AppRoutes.dkyc);
+      context.go(kycValid ? AppRoutes.home : AppRoutes.dkyc);
     } on DioException catch (e) {
       final data = e.response?.data;
       final msg = data is Map

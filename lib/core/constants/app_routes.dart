@@ -30,6 +30,7 @@ class AppRoutes {
   static const enachUpi = '/enach/upi';
   static const vkyc = '/vkyc';
   static const dkyc = '/dkyc';
+  static const ckyc = '/ckyc';
   static const esign = '/esign';
   static const references = '/references';
   static const emailVerification = '/email-verification';

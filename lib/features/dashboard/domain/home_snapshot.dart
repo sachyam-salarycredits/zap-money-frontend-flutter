@@ -230,6 +230,8 @@ class HomeCardResolver {
   }) {
     if (home == null) return HomeCardKind.idle;
 
+    // Callers still pass mandate state. The funded card uses it; this resolver does not.
+    enach;
     final stage = home.peerStage.toLowerCase();
     final kycDone = ocr || vkyc;
     final emailDone = home.emailVerified;
@@ -243,29 +245,36 @@ class HomeCardResolver {
           : HomeCardKind.cancelled;
     }
 
-    // RN: PL/DC + missing KYC / email / eNACH → "Disbursal Process" checklist.
-    if (plOrDc && (!kycDone || !enach || !emailDone)) {
+    // Missing KYC or email still blocks funding. eNACH waits until the loan
+    // is funded.
+    if (plOrDc && (!kycDone || !emailDone)) {
       return HomeCardKind.completeProcess;
     }
 
-    // RN: all steps done + bank transfer status set → active / disbursed loan UI,
-    // swapped for the repayment-complete card once the loan is paid off.
-    if (plOrDc && kycDone && enach && emailDone && transferred) {
+    // Bank transfer set → active / disbursed loan UI, or the repayment-complete
+    // card once the loan is paid off.
+    if (plOrDc && kycDone && emailDone && transferred) {
       return home.loanCompleted
           ? HomeCardKind.loanCompleted
           : HomeCardKind.activeLoan;
     }
 
-    // RN: all steps done + Disbursal_Bank_Status null → "in process of funding".
-    // Skip when the latest contract is already repaid — leftover flags must not
-    // hide the Apply for New Loan card.
-    if (plOrDc &&
-        kycDone &&
-        enach &&
-        emailDone &&
-        !transferred &&
-        !home.loanCompleted) {
+    // KYC + email done and not yet transferred → funding. Mandate is prompted
+    // on this card only after the marketplace stage is Funded.
+    if (plOrDc && kycDone && emailDone && !transferred && !home.loanCompleted) {
       return HomeCardKind.funding;
+    }
+
+    // Live offer only when a system APP offer still exists. After loan closure
+    // the old Loan_Amount_Request can stay APPROVED while SystemGeneratedFinalOffer
+    // is archived — that must not look like a new offer (View offer would 404).
+    if (!plOrDc && requestStatus == 'APPROVED' && cd == 'APP') {
+      return HomeCardKind.creditOffer;
+    }
+    // Amount request is recorded before the bank report. Show that review
+    // state even when Finbit has not been fetched yet.
+    if (!plOrDc && requestStatus == 'PENDING') {
+      return HomeCardKind.creditPending;
     }
 
     // Eligible customers request an amount before an offer is presented.
@@ -289,7 +298,8 @@ class HomeCardResolver {
 
     // Repaid loan whose offer stage the backend already reset (pl/dc cleared,
     // offer archived): keep congratulating and offering a re-apply instead of
-    // falling through to the finished loan's funding card.
+    // falling through to the finished loan's funding card — or a stale
+    // APPROVED amount request without a live APP offer.
     if (home.loanCompleted) {
       return HomeCardKind.loanCompleted;
     }

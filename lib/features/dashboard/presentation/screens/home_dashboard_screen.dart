@@ -305,14 +305,6 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                     context.push(AppRoutes.emailVerification);
                   },
                 ),
-                _StepRow(
-                  done: flags?.enach == true,
-                  label: 'eNACH mandate',
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    context.push(AppRoutes.enach);
-                  },
-                ),
               ],
             ),
           ),
@@ -559,16 +551,21 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
         final isSalaried =
             (_bundle?.userType ?? '').toLowerCase() == 'salaried';
         final loanFunded = (home?.peerStage ?? '').toLowerCase() == 'funded';
+        final enachDone = flags?.enach == true;
+        final nachPending = loanFunded && !enachDone;
         final hasSigningLink =
             loanFunded &&
+            enachDone &&
             (_esignStatus?.signingLink?.trim().isNotEmpty ?? false);
-        final esignDone = loanFunded && _esignStatus?.isSigned == true;
-        // References are required before e-sign.
+        final esignDone = loanFunded && enachDone && _esignStatus?.isSigned == true;
+        // References are required before e-sign, and both wait for eNACH.
         final referencesDone =
-            loanFunded && (_referenceStatus?.complete == true);
-        final referencesPending = loanFunded && !referencesDone;
+            loanFunded && enachDone && (_referenceStatus?.complete == true);
+        final referencesPending = loanFunded && enachDone && !referencesDone;
         final canSign = hasSigningLink && referencesDone && !esignDone;
-        final fundingBody = referencesPending
+        final fundingBody = nachPending
+            ? 'Your loan is funded. Set up eNACH so repayments can be collected.'
+            : referencesPending
             ? 'Add 2 personal references before signing your loan agreement.'
             : canSign
             ? 'Your loan agreement is ready. Sign it to proceed with disbursement.'
@@ -579,12 +576,16 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           title: 'Disbursal Process',
           body: fundingBody,
           accentAsset: 'assets/images/profile/homecoins.png',
-          actionLabel: referencesPending
+          actionLabel: nachPending
+              ? 'Set up eNACH'
+              : referencesPending
               ? 'Add references'
               : canSign
               ? 'Sign loan agreement'
               : null,
-          onAction: referencesPending
+          onAction: nachPending
+              ? () => context.push(AppRoutes.enach)
+              : referencesPending
               ? _openReferences
               : canSign
               ? _openEsign
@@ -592,6 +593,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           timeline: _FundingTimeline(
             kycLabel: isSalaried ? 'Video KYC' : 'Digital KYC',
             loanFunded: loanFunded,
+            enachDone: enachDone,
             esignDone: esignDone,
             esignPending:
                 canSign || (hasSigningLink && referencesDone && !esignDone),
@@ -627,9 +629,6 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
             kycDone: kycDone,
             kycLabel: isSalaried ? 'Video KYC' : 'Digital KYC',
             emailDone: home?.emailVerified == true,
-            enachDone: flags?.enach == true,
-            esignDone: false,
-            esignPending: false,
           ),
           actionLabel: 'Take action',
           onAction: () => _showCompleteProcessSheet(home!),
@@ -1091,11 +1090,12 @@ String _ordinalSuffix(int n) {
   }
 }
 
-/// RN home funding card after KYC + email + eNACH (Disbursal_Bank_Status blank).
+/// Funding card after KYC + email. eNACH starts only once the loan is funded.
 class _FundingTimeline extends StatelessWidget {
   const _FundingTimeline({
     required this.kycLabel,
     required this.loanFunded,
+    this.enachDone = false,
     this.esignDone = false,
     this.esignPending = false,
     this.referencesDone = false,
@@ -1104,6 +1104,7 @@ class _FundingTimeline extends StatelessWidget {
 
   final String kycLabel;
   final bool loanFunded;
+  final bool enachDone;
   final bool esignDone;
   final bool esignPending;
   final bool referencesDone;
@@ -1116,19 +1117,23 @@ class _FundingTimeline extends StatelessWidget {
       children: [
         _TimelineStep(done: true, label: kycLabel),
         _TimelineStep(done: true, label: 'Activate E-mail ID'),
-        _TimelineStep(done: true, label: 'E-Nach'),
         const SizedBox(height: 4),
         const _InProcessRow(),
         const SizedBox(height: 10),
         _TimelineStep(done: loanFunded, label: 'Loan funded'),
-        if (loanFunded || referencesPending || referencesDone)
+        if (loanFunded)
+          _TimelineStep(
+            done: enachDone,
+            label: enachDone ? 'E-Nach' : 'Set up eNACH (pending)',
+          ),
+        if (loanFunded && enachDone)
           _TimelineStep(
             done: referencesDone,
             label: referencesPending && !referencesDone
                 ? 'Add 2 references (pending)'
                 : 'References submitted',
           ),
-        if (loanFunded || esignPending || esignDone)
+        if (loanFunded && enachDone)
           _TimelineStep(
             done: esignDone,
             label: esignPending && !esignDone
@@ -1141,23 +1146,17 @@ class _FundingTimeline extends StatelessWidget {
   }
 }
 
-/// RN pending checklist while any of KYC / email / eNACH is still open.
+/// Checklist while KYC or email is still open, before funding.
 class _PendingChecklist extends StatelessWidget {
   const _PendingChecklist({
     required this.kycDone,
     required this.kycLabel,
     required this.emailDone,
-    required this.enachDone,
-    this.esignDone = false,
-    this.esignPending = false,
   });
 
   final bool kycDone;
   final String kycLabel;
   final bool emailDone;
-  final bool enachDone;
-  final bool esignDone;
-  final bool esignPending;
 
   @override
   Widget build(BuildContext context) {
@@ -1166,14 +1165,6 @@ class _PendingChecklist extends StatelessWidget {
       children: [
         _TimelineStep(done: kycDone, label: kycLabel),
         _TimelineStep(done: emailDone, label: 'Activate E-mail ID'),
-        _TimelineStep(done: enachDone, label: 'E-Nach'),
-        if (esignPending || esignDone)
-          _TimelineStep(
-            done: esignDone,
-            label: esignPending && !esignDone
-                ? 'Sign loan agreement (pending)'
-                : 'Loan agreement signed',
-          ),
       ],
     );
   }

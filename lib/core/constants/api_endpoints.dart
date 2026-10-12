@@ -39,6 +39,8 @@ class ApiEndpoints {
   static String get permissionDataStore => '$apiPhpService/permissionDataStore';
   static String get storeCustomerDeviceLocation =>
       '$url/StoreCustomerDeviceLocation';
+  static String get getLocationDetails => '$url/getLocationDetails/';
+  static String get getLocationDecision => '$url/get_location_decision';
 
   // Profile / KYC prep
   static String get storeCustomerInformation =>
@@ -83,6 +85,12 @@ class ApiEndpoints {
   static String get digilockerStatus => '$url/digilockerStatus';
   static String get digilockerComplete => '$url/digilockerComplete';
   static String get uploadDkycResponse => '$url/dkycFrontendResponse';
+  static String get ckycSearch => '$url/api/ckyc/search/';
+  static String get ckycSelect => '$url/api/ckyc/select/';
+  static String get ckycOtpGenerate => '$url/api/ckyc/otp/generate/';
+  static String get ckycOtpValidate => '$url/api/ckyc/otp/validate/';
+  static String get ckycStatus => '$url/api/ckyc/status/';
+  static String get ckycAnalyze => '$url/api/ckyc/analyze/';
   static String get esignStatus => '$url/EsignStatus';
   static String get saveReferenceNumber => '$url/save_reference_number';
   static String get getLoanReferences => '$url/GetLoanReferences';
