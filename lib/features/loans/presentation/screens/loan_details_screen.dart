@@ -330,7 +330,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
         display == 'Un-funded') {
       return Colors.red;
     }
-    return const Color(0xFF3E1982);
+    return AppColors.surfaceElevated;
   }
 
   Color _badgeFg(String rawStage, String display) {
@@ -637,7 +637,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: const Color(0xFF633AB1),
+          backgroundColor: AppColors.border,
           body: SafeArea(
             child: Column(
               children: [
@@ -672,7 +672,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                           width: 152,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF3E1982),
+                            color: AppColors.surfaceElevated,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
@@ -840,7 +840,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                 'Your loan application was cancelled as you\nfailed to complete the following steps',
                                 style: AppTypography.body(
                                   size: 12,
-                                  color: const Color(0xFFAC9FC6),
+                                  color: AppColors.mutedOnDark,
                                 ),
                               ),
                             ),
@@ -864,7 +864,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                             const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 20),
                               child: Divider(
-                                color: Color(0xFF633AB1),
+                                color: AppColors.border,
                                 height: 32,
                               ),
                             ),
@@ -940,7 +940,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                                       decoration: const BoxDecoration(
                                         border: Border(
                                           bottom: BorderSide(
-                                            color: Color(0xFF633AB1),
+                                            color: AppColors.border,
                                           ),
                                         ),
                                       ),
@@ -1316,7 +1316,7 @@ class _StageModal extends StatelessWidget {
                       ],
                       const Padding(
                         padding: EdgeInsets.fromLTRB(25, 20, 25, 0),
-                        child: Divider(color: Color(0xFF633AB1), height: 1),
+                        child: Divider(color: AppColors.border, height: 1),
                       ),
                       if (displayStage == 'In Progress')
                         ...inProgressRows.map(_detailRow),
@@ -1333,8 +1333,8 @@ class _StageModal extends StatelessWidget {
                               child: LinearProgressIndicator(
                                 value: progress,
                                 minHeight: 10,
-                                backgroundColor: const Color(0xFF633AB1),
-                                color: const Color(0xFF4A6CFF),
+                                backgroundColor: AppColors.border,
+                                color: AppColors.accentGold,
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -1361,7 +1361,7 @@ class _StageModal extends StatelessWidget {
                           vertical: 20,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3E1982),
+                          color: AppColors.surfaceElevated,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Column(
@@ -1427,7 +1427,7 @@ class _StageModal extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 30),
       decoration: const BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Color(0xFF633AB1)),
+          bottom: BorderSide(color: AppColors.border),
         ),
       ),
       child: Row(
@@ -1518,7 +1518,7 @@ class _PayEmiModal extends StatelessWidget {
                   margin: const EdgeInsets.only(left: 10, right: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3E1982),
+                    color: AppColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -1560,7 +1560,7 @@ class _CoolingPeriodBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const purple = Color(0xFF633AB1);
+    const purple = AppColors.border;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1584,7 +1584,7 @@ class _CoolingPeriodBanner extends StatelessWidget {
             'Close this loan within 24 hours by paying the disbursed amount + ₹150 + GST.',
             style: AppTypography.body(
               size: 12,
-              color: const Color(0xFF6B5B8C),
+              color: AppColors.mutedOnDark,
             ),
           ),
           const SizedBox(height: 12),
@@ -1598,7 +1598,7 @@ class _CoolingPeriodBanner extends StatelessWidget {
                       'Time left',
                       style: AppTypography.body(
                         size: 11,
-                        color: const Color(0xFF6B5B8C),
+                        color: AppColors.mutedOnDark,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1643,7 +1643,7 @@ class _CoolingPeriodBanner extends StatelessWidget {
             'Payable $totalAmount',
             style: AppTypography.body(
               size: 12,
-              color: const Color(0xFF6B5B8C),
+              color: AppColors.mutedOnDark,
             ),
           ),
         ],
@@ -1747,7 +1747,7 @@ class _CoolingCloseModal extends StatelessWidget {
                   'Pay only the disbursed amount plus a flat fee during the cooling period.',
                   style: AppTypography.body(
                     size: 12,
-                    color: const Color(0xFFAC9FC6),
+                    color: AppColors.mutedOnDark,
                   ),
                 ),
               ),
@@ -1756,11 +1756,11 @@ class _CoolingCloseModal extends StatelessWidget {
                 child: Column(
                   children: [
                     row('Disbursed amount', principal),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('Cooling fee', fee),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('GST (18%)', gst),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('Total payable', total, bold: true),
                   ],
                 ),
@@ -1773,7 +1773,7 @@ class _CoolingCloseModal extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3E1982),
+                    color: AppColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -1811,7 +1811,7 @@ class _ForeclosureBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const purple = Color(0xFF633AB1);
+    const purple = AppColors.border;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -1835,7 +1835,7 @@ class _ForeclosureBanner extends StatelessWidget {
             'Close your loan anytime by paying outstanding principal, interest till today, foreclosure charge and GST.',
             style: AppTypography.body(
               size: 12,
-              color: const Color(0xFF6B5B8C),
+              color: AppColors.mutedOnDark,
             ),
           ),
           const SizedBox(height: 12),
@@ -1970,7 +1970,7 @@ class _ForeclosureModal extends StatelessWidget {
                   'Pay outstanding principal, interest till today, product foreclosure charge, and GST on the charge.',
                   style: AppTypography.body(
                     size: 12,
-                    color: const Color(0xFFAC9FC6),
+                    color: AppColors.mutedOnDark,
                   ),
                 ),
               ),
@@ -1979,13 +1979,13 @@ class _ForeclosureModal extends StatelessWidget {
                 child: Column(
                   children: [
                     row('Outstanding principal', principal),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('Interest till today', interest),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('Foreclosure charge ($chargePct)', charge),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('GST on charge (18%)', gst),
-                    const Divider(color: Color(0xFF633AB1), height: 1),
+                    const Divider(color: AppColors.border, height: 1),
                     row('Total payable', total, bold: true),
                   ],
                 ),
@@ -1998,7 +1998,7 @@ class _ForeclosureModal extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(horizontal: 10),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3E1982),
+                    color: AppColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -2040,7 +2040,7 @@ class _CancelModal extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 28),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF2A0A5C),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -2125,7 +2125,7 @@ class LoanTransactionsScreen extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF2A0A5C),
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(

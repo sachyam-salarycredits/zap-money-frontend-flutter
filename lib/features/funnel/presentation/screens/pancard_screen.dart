@@ -170,7 +170,7 @@ class _PancardScreenState extends ConsumerState<PancardScreen> {
       hintText: hint,
       hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
       filled: true,
-      fillColor: const Color(0xFF2A0A5C),
+      fillColor: AppColors.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),

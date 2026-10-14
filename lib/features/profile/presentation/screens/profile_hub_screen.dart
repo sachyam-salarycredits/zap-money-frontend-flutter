@@ -109,7 +109,7 @@ class _ProfileHubScreenState extends ConsumerState<ProfileHubScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF2A0A5C),
+        backgroundColor: AppColors.surface,
         title: Text('Log out?', style: AppTypography.headline(size: 18)),
         content: Text(
           'You will need to verify OTP again to sign back in.',
@@ -189,7 +189,7 @@ class _ProfileHubScreenState extends ConsumerState<ProfileHubScreen> {
                           customBorder: const CircleBorder(),
                           child: CircleAvatar(
                             radius: 56,
-                            backgroundColor: const Color(0xFF3E1982),
+                            backgroundColor: AppColors.surfaceElevated,
                             backgroundImage: photo != null && photo.isNotEmpty
                                 ? NetworkImage(photo)
                                 : null,
@@ -213,8 +213,8 @@ class _ProfileHubScreenState extends ConsumerState<ProfileHubScreen> {
                             shape: BoxShape.circle,
                             gradient: const LinearGradient(
                               colors: [
-                                Color(0xFF80FFDB),
-                                Color(0xFF4747E7),
+                                AppColors.accentGold,
+                                AppColors.gradientAccent,
                               ],
                             ),
                           ),
@@ -357,7 +357,7 @@ class _ProfileTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: const Color(0xFF2A0A5C),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,

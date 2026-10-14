@@ -144,7 +144,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
 
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF2A0A5C),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -272,7 +272,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     final flags = _bundle?.flags;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF2A0A5C),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -321,7 +321,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF2A0A5C),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -733,7 +733,7 @@ class _HeroCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF3A1478), Color(0xFF230261)],
+          colors: [AppColors.gradientStart, AppColors.gradientEnd],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
@@ -798,7 +798,7 @@ class _LoanCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF3A1478), Color(0xFF230261)],
+          colors: [AppColors.gradientStart, AppColors.gradientEnd],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white.withValues(alpha: 0.08)),

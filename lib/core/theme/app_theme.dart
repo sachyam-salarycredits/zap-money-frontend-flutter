@@ -1,12 +1,30 @@
 import 'package:flutter/material.dart';
 
+/// Brand: dark green primary (#01503A), golden yellow accent (#CC9C20).
 class AppColors {
   AppColors._();
 
-  static const Color background = Color.fromRGBO(79, 48, 153, 1);
-  static const Color deepPurple = Color(0xFF230261);
-  static const Color tabBar = Color(0xFF300E71);
-  static const Color accentMint = Color(0xFF80FFDB);
+  static const Color primary = Color(0xFF01503A);
+  static const Color accentGold = Color(0xFFCC9C20);
+
+  /// Scaffold / app chrome (kept for existing call sites).
+  static const Color deepPurple = primary;
+  static const Color accentMint = accentGold;
+  static const Color background = primary;
+
+  static const Color tabBar = Color(0xFF013D2E);
+
+  /// Cards, sheets, inputs on primary background.
+  static const Color surface = Color(0xFF024732);
+  static const Color surfaceElevated = Color(0xFF036B52);
+  static const Color sheet = Color(0xFF034028);
+  static const Color border = Color(0xFF047A5C);
+
+  static const Color mutedOnDark = Color(0xFF8FB5A8);
+  static const Color gradientStart = Color(0xFF027656);
+  static const Color gradientEnd = Color(0xFF012A1F);
+  static const Color gradientAccent = Color(0xFFE8B84A);
+
   static const Color success = Color(0xFF3ADB76);
   static const Color warning = Color(0xFFFFAE00);
   static const Color white = Colors.white;
@@ -50,11 +68,12 @@ ThemeData buildZapTheme() {
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-    scaffoldBackgroundColor: AppColors.deepPurple,
+    scaffoldBackgroundColor: AppColors.primary,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: AppColors.background,
+      seedColor: AppColors.primary,
       brightness: Brightness.dark,
-      primary: AppColors.background,
+      primary: AppColors.primary,
+      secondary: AppColors.accentGold,
     ),
     fontFamily: AppTypography.family,
   );
@@ -64,10 +83,14 @@ ThemeData buildZapTheme() {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.white,
-        foregroundColor: AppColors.deepPurple,
+        foregroundColor: AppColors.primary,
         minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        textStyle: AppTypography.body(size: 16, weight: FontWeight.w600, color: AppColors.deepPurple),
+        textStyle: AppTypography.body(
+          size: 16,
+          weight: FontWeight.w600,
+          color: AppColors.primary,
+        ),
       ),
     ),
   );

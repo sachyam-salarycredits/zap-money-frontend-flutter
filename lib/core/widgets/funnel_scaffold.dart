@@ -95,11 +95,11 @@ class FunnelScaffold extends StatelessWidget {
               child: useSheet
                   ? Container(
                       width: double.infinity,
-                      decoration: const BoxDecoration(
-                        // RN profession sheet: rgba(35, 2, 97, 0.8)
-                        color: Color(0xCC230261),
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(25)),
+                      decoration: BoxDecoration(
+                        color: AppColors.gradientEnd.withValues(alpha: 0.8),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(25),
+                        ),
                       ),
                       child: child,
                     )
@@ -142,7 +142,7 @@ class _TopBar extends StatelessWidget {
                 width: 16,
                 height: 16,
                 errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.arrow_back, color: Colors.white),
+                    const Icon(Icons.arrow_back, color: AppColors.accentGold),
               ),
             )
           else
@@ -230,7 +230,7 @@ Future<void> showNeedHelpSheet(BuildContext context) {
     barrierColor: Colors.black54,
     builder: (ctx) {
       return Dialog(
-        backgroundColor: const Color(0xFF4A2B8C),
+        backgroundColor: AppColors.sheet,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 28),
         child: Padding(

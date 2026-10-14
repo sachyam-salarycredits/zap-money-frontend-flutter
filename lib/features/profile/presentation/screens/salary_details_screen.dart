@@ -216,7 +216,7 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
                       color: AppColors.muted,
                     ),
                     filled: true,
-                    fillColor: const Color(0xFF2A0A5C),
+                    fillColor: AppColors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -243,7 +243,7 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
     return AspectRatio(
       aspectRatio: 0.85,
       child: Material(
-        color: const Color(0xFF2A0A5C),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -292,7 +292,7 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
                             'Upload for',
                             style: AppTypography.body(
                               size: 9,
-                              color: const Color(0xFFAC9FC6),
+                              color: AppColors.mutedOnDark,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -300,11 +300,11 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
                             'assets/images/profile/uploadImage.png',
                             height: 18,
                             width: 18,
-                            color: const Color(0xFFAC9FC6),
+                            color: AppColors.mutedOnDark,
                             errorBuilder: (_, __, ___) => const Icon(
                               Icons.upload_file,
                               size: 18,
-                              color: Color(0xFFAC9FC6),
+                              color: AppColors.mutedOnDark,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -312,7 +312,7 @@ class _ProfileSalaryScreenState extends ConsumerState<ProfileSalaryScreen> {
                             'Month $slot',
                             style: AppTypography.body(
                               size: 9,
-                              color: const Color(0xFFAC9FC6),
+                              color: AppColors.mutedOnDark,
                             ),
                           ),
                         ],

@@ -119,7 +119,7 @@ class LoanContractPdfService {
               style: pw.TextStyle(
                 fontSize: 20,
                 fontWeight: pw.FontWeight.bold,
-                color: PdfColor.fromInt(0xFF3A2165),
+                color: PdfColor.fromInt(0xFF01503A),
               ),
             ),
           ),
@@ -182,7 +182,7 @@ class LoanContractPdfService {
                 fontSize: 9,
               ),
               headerDecoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFF577736),
+                color: PdfColor.fromInt(0xFF01503A),
               ),
               cellStyle: const pw.TextStyle(fontSize: 8),
               cellAlignment: pw.Alignment.centerLeft,
@@ -210,7 +210,7 @@ class LoanContractPdfService {
         style: pw.TextStyle(
           fontSize: 13,
           fontWeight: pw.FontWeight.bold,
-          color: PdfColor.fromInt(0xFF539515),
+          color: PdfColor.fromInt(0xFFCC9C20),
         ),
       ),
     );
@@ -223,7 +223,7 @@ class LoanContractPdfService {
         return pw.TableRow(
           children: [
             pw.Container(
-              color: PdfColor.fromInt(0xFF577736),
+              color: PdfColor.fromInt(0xFF01503A),
               padding: const pw.EdgeInsets.all(6),
               child: pw.Text(
                 r[0],
@@ -235,7 +235,7 @@ class LoanContractPdfService {
               ),
             ),
             pw.Container(
-              color: PdfColor.fromInt(0xFFEBF3E0),
+              color: PdfColor.fromInt(0xFFE8F5F0),
               padding: const pw.EdgeInsets.all(6),
               child: pw.Text(
                 r[1].isEmpty ? '—' : r[1],

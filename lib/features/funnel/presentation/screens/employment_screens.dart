@@ -168,7 +168,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
   Future<void> _pickId({required bool front}) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF4A2B8C),
+      backgroundColor: AppColors.sheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -235,7 +235,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFF3E1982),
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -572,7 +572,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF3E1982),
+            color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(12),
           ),
           clipBehavior: Clip.antiAlias,
@@ -580,13 +580,13 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
               ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.upload, color: Color(0xFFAC9FC6)),
+                    const Icon(Icons.upload, color: AppColors.mutedOnDark),
                     const SizedBox(height: 6),
                     Text(
                       label,
                       style: AppTypography.body(
                         size: 13,
-                        color: const Color(0xFFAC9FC6),
+                        color: AppColors.mutedOnDark,
                       ),
                     ),
                   ],
@@ -637,7 +637,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
         hintText: hint,
         hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
         filled: true,
-        fillColor: const Color(0xFF2A0A5C),
+        fillColor: AppColors.surface,
         suffixIcon: suffix,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

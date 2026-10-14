@@ -613,7 +613,7 @@ class _ConsentCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF3E1982),
+              color: AppColors.surfaceElevated,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -680,7 +680,7 @@ class _ConsentCard extends StatelessWidget {
                   decoration: InputDecoration(
                     counterText: '',
                     filled: true,
-                    fillColor: const Color(0xFF3E1982),
+                    fillColor: AppColors.surfaceElevated,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide.none,
@@ -715,7 +715,7 @@ class _ConsentCard extends StatelessWidget {
             Text(
               error!,
               textAlign: TextAlign.center,
-              style: AppTypography.body(size: 13, color: const Color(0xFFFFAE00)),
+              style: AppTypography.body(size: 13, color: AppColors.warning),
             ),
             if (onRetryFetch != null) ...[
               const SizedBox(height: 12),

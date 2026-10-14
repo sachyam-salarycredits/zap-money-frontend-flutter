@@ -427,7 +427,7 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor: AppColors.accentMint,
-                    inactiveTrackColor: const Color(0xFF633AB1),
+                    inactiveTrackColor: AppColors.border,
                     thumbColor: AppColors.accentMint,
                     overlayColor: AppColors.accentMint.withValues(alpha: 0.2),
                   ),
@@ -497,7 +497,7 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
                             height: 75,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF3E1982),
+                              color: AppColors.surfaceElevated,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
                                 color: selected

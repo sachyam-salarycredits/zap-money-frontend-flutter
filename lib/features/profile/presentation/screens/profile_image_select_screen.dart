@@ -98,7 +98,7 @@ class _ProfileImageSelectScreenState
     if (_uploading) return;
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF4A2B8C),
+      backgroundColor: AppColors.sheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -348,7 +348,7 @@ class _PresetCircle extends StatelessWidget {
         width: 90,
         height: 90,
         decoration: BoxDecoration(
-          color: const Color(0xFF3E1982),
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(45),
         ),
         alignment: Alignment.center,
@@ -378,7 +378,7 @@ class _ActionCircle extends StatelessWidget {
         width: 90,
         height: 90,
         decoration: BoxDecoration(
-          color: const Color(0xFF3E1982),
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(45),
         ),
         alignment: Alignment.center,
@@ -407,7 +407,7 @@ class _SourceButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: const Color(0xFF3E1982),
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

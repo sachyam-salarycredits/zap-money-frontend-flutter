@@ -384,7 +384,7 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen> {
         padding: const EdgeInsets.symmetric(vertical: 14),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFF2A0A5C),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selected ? AppColors.accentMint : Colors.transparent,
@@ -424,7 +424,7 @@ class _PersonalInfoScreenState extends ConsumerState<PersonalInfoScreen> {
         hintText: hint,
         hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
         filled: true,
-        fillColor: const Color(0xFF2A0A5C),
+        fillColor: AppColors.surface,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(

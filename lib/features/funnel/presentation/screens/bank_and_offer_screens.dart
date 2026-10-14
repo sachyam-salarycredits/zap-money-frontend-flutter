@@ -413,7 +413,7 @@ class _BankDetailsScreenState extends ConsumerState<BankDetailsScreen> {
         hintText: hint,
         hintStyle: AppTypography.body(size: 16, color: AppColors.muted),
         filled: true,
-        fillColor: const Color(0xFF2A0A5C),
+        fillColor: AppColors.surface,
         suffixIcon: suffix,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1195,7 +1195,7 @@ class _ResidenceAddressScreenState
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: _proofType,
-            dropdownColor: const Color(0xFF3E1982),
+            dropdownColor: AppColors.surfaceElevated,
             style: AppTypography.body(size: 16),
             decoration: InputDecoration(
               filled: true,
@@ -1253,7 +1253,7 @@ class _ResidenceAddressScreenState
     final navInset = MediaQuery.viewPaddingOf(context).bottom;
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      backgroundColor: const Color(0xFF2A1466),
+      backgroundColor: AppColors.sheet,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -1266,7 +1266,7 @@ class _ResidenceAddressScreenState
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3E1982),
+                  color: AppColors.surfaceElevated,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
