@@ -637,7 +637,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: AppColors.border,
+          backgroundColor: AppColors.primary,
           body: SafeArea(
             child: Column(
               children: [
@@ -687,9 +687,9 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
                 Expanded(
                   child: Container(
                     width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Color.fromRGBO(35, 2, 97, 0.8),
-                      borderRadius: BorderRadius.vertical(
+                    decoration: BoxDecoration(
+                      color: AppColors.gradientEnd.withValues(alpha: 0.8),
+                      borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(25),
                       ),
                     ),
@@ -1278,9 +1278,11 @@ class _StageModal extends StatelessWidget {
           heightFactor: 0.8,
           widthFactor: 1,
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color.fromRGBO(35, 2, 97, 0.95),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+            decoration: BoxDecoration(
+              color: AppColors.sheet.withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(25),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1474,7 +1476,7 @@ class _PayEmiModal extends StatelessWidget {
           width: double.infinity,
           height: MediaQuery.sizeOf(context).height * 0.7,
           decoration: const BoxDecoration(
-            color: Color.fromRGBO(48, 14, 113, 1),
+            color: AppColors.tabBar,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 24),
@@ -1706,7 +1708,7 @@ class _CoolingCloseModal extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: const BoxDecoration(
-            color: Color.fromRGBO(48, 14, 113, 1),
+            color: AppColors.tabBar,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 28),
@@ -1938,7 +1940,7 @@ class _ForeclosureModal extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: const BoxDecoration(
-            color: Color.fromRGBO(48, 14, 113, 1),
+            color: AppColors.tabBar,
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 28),

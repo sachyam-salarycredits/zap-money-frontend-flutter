@@ -43,6 +43,10 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
     });
     try {
       final repo = ref.read(enachRepositoryProvider);
+      if (await repo.checkSourceStatus()) {
+        await _pollAndGoHome();
+        return;
+      }
       final info = await repo.getEnachInformation();
       final ensured = await repo.ensureEnachAmountOnBank(enachInfo: info);
       if (mounted) {
@@ -120,6 +124,11 @@ class _EnachScreenState extends ConsumerState<EnachScreen> {
       }
 
       final created = await repo.createSource(authMode: _authMode);
+      final authorized = created?['mandate_authorized'];
+      if (authorized == true || authorized?.toString().toLowerCase() == 'true') {
+        await _pollAndGoHome();
+        return;
+      }
       final url = created?['mandate_url']?.toString();
       final intent = created?['upi_intent'];
       final hasIntent = intent is Map &&

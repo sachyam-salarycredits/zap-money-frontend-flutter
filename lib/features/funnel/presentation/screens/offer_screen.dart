@@ -225,14 +225,8 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
   double _localEmi(double principal, int tenure, double annualRate) {
     if (tenure <= 0) return 0;
     if (annualRate <= 0) return (principal / tenure).roundToDouble();
-    final r = annualRate / (12 * 100);
-    final pow = (1 + r);
-    var stepTwo = 1.0;
-    for (var i = 0; i < tenure; i++) {
-      stepTwo *= pow;
-    }
-    final emi = (principal * r * stepTwo) / (stepTwo - 1);
-    return emi.roundToDouble();
+    final totalInterest = principal * annualRate * tenure / 1200;
+    return ((principal + totalInterest) / tenure).roundToDouble();
   }
 
   Future<({double lat, double lng})> _location() async {
