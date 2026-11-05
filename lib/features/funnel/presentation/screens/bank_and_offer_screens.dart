@@ -1066,28 +1066,8 @@ class _ResidenceAddressScreenState
       }
 
       await ref.read(screenStatusServiceProvider).completeAddress();
-      // RN ResidenceAddress focus marks bankdetails_verified.
-      await ref.read(screenStatusServiceProvider).completeBankVerified();
-      // First-time: employer after residence, then the requested amount.
-      var employerDone = false;
-      try {
-        final bundle = await ref
-            .read(homeRepositoryProvider)
-            .fetchHomeBundle();
-        employerDone = bundle.flags.employerDetails;
-      } catch (_) {
-        // Fall through to employer when flags cannot be loaded.
-      }
-      if (mounted) {
-        if (employerDone) {
-          context.go(AppRoutes.waiting);
-        } else {
-          context.go(
-            AppRoutes.employerDetails,
-            extra: const {'isFrom': 'postResidence'},
-          );
-        }
-      }
+      // Employer details are not collected in the app. Amount request is next.
+      if (mounted) context.go(AppRoutes.waiting);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1356,6 +1336,9 @@ class _WaitingScreenState extends ConsumerState<WaitingScreen> {
     });
     try {
       await ref.read(homeRepositoryProvider).submitLoanAmountRequest(amount);
+      try {
+        await ref.read(screenStatusServiceProvider).completeAmountRequest();
+      } catch (_) {}
       if (!mounted) return;
       ref.read(homeRefreshTickProvider.notifier).state++;
       context.go(AppRoutes.home);

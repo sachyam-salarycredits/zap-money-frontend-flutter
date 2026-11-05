@@ -17,6 +17,15 @@ import '../../../profile/data/profile_repository.dart';
 import '../../data/loan_contract_pdf.dart';
 import '../../data/loans_prefetch.dart';
 
+String _formatRupees(num amount) {
+  final paise = (amount * 100).round() % 100 != 0;
+  return NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: paise ? 2 : 0,
+  ).format(amount);
+}
+
 /// RN My Loans gate → NoLoans or LoanDetails.
 class MyLoansScreen extends ConsumerStatefulWidget {
   const MyLoansScreen({super.key, this.contractId});
@@ -350,7 +359,13 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
     if (raw == null) return '—';
     final n = raw is num ? raw.toDouble() : double.tryParse(raw.toString());
     if (n == null) return raw.toString();
-    return _currency.format(n);
+    final paise = (n * 100).round() % 100 != 0;
+    if (!paise) return _currency.format(n);
+    return NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits: 2,
+    ).format(n);
   }
 
   String _tenureLabel(dynamic raw) {
@@ -446,7 +461,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
     }
   }
 
-  int? get _emiAmount {
+  double? get _emiAmount {
     final detail = _loanDetail;
     if (detail == null) return null;
     // Prefer backend EMI (`loanDue`); do not divide principal by tenure.
@@ -455,7 +470,7 @@ class _MyLoansScreenState extends ConsumerState<MyLoansScreen> {
       final n = raw is num
           ? raw.toDouble()
           : double.tryParse(raw?.toString() ?? '');
-      if (n != null && n > 0) return n.round();
+      if (n != null && n > 0) return n;
     }
     return null;
   }
@@ -1461,7 +1476,7 @@ class _PayEmiModal extends StatelessWidget {
     required this.onPay,
   });
 
-  final int? emiAmount;
+  final double? emiAmount;
   final int? daysUntilDue;
   final VoidCallback onClose;
   final VoidCallback onPay;
@@ -1529,7 +1544,7 @@ class _PayEmiModal extends StatelessWidget {
                         child: Text(
                           emiAmount == null
                               ? 'Pay EMI amount'
-                              : 'Pay EMI amount (₹$emiAmount)',
+                              : 'Pay EMI amount (${_formatRupees(emiAmount!)})',
                           style: AppTypography.body(size: 14),
                         ),
                       ),

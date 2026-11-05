@@ -5,6 +5,13 @@ import 'package:zap_money/core/services/screen_status_resolver.dart';
 void main() {
   const resolver = ScreenStatusResolver();
 
+  test('reference_completed routes to home', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(references: true, permission: true),
+    );
+    expect(route, AppRoutes.home);
+  });
+
   test('enach_completed routes to home', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(enach: true, permission: true),
@@ -101,6 +108,16 @@ void main() {
     expect(route, AppRoutes.emailVerification);
   });
 
+  test('verified email without KYC routes to DigiLocker', () {
+    final route = resolver.resolve(
+      flags: const ScreenCompletionFlags(
+        personalInfo: true,
+        emailVerified: true,
+      ),
+    );
+    expect(route, AppRoutes.dkyc);
+  });
+
   test('personal details with KYC routes to the credit bureau', () {
     final route = resolver.resolve(
       flags: const ScreenCompletionFlags(personalInfo: true, vkyc: true),
@@ -167,8 +184,10 @@ void main() {
     final flags = ScreenCompletionFlags.fromScreenList([
       {'screen_name': 'permissionGranted'},
       {'screen_name': 'enach_completed'},
+      {'screen_name': 'reference_completed'},
     ]);
     expect(flags.permission, isTrue);
     expect(flags.enach, isTrue);
+    expect(flags.references, isTrue);
   });
 }

@@ -35,6 +35,9 @@ class ScreenStatusService {
   Future<void> completePersonalInfo() =>
       completeStep(ScreenStatusFlags.personalInfo);
 
+  Future<void> completeEmailVerified() =>
+      completeStep(ScreenStatusFlags.emailVerified);
+
   Future<void> completeEquifax() => completeStep(ScreenStatusFlags.equifax);
 
   Future<void> completeEmployer() =>
@@ -53,11 +56,17 @@ class ScreenStatusService {
   Future<void> completeAddress() =>
       completeStep(ScreenStatusFlags.addressSelection);
 
+  Future<void> completeAmountRequest() =>
+      completeStep(ScreenStatusFlags.amountRequest);
+
   Future<void> completePl() => completeStep(ScreenStatusFlags.pl);
 
   Future<void> completeDc() => completeStep(ScreenStatusFlags.dc);
 
   Future<void> completeEnach() => completeStep(ScreenStatusFlags.enach);
+
+  Future<void> completeReferences() =>
+      completeStep(ScreenStatusFlags.references);
 
   Future<void> completeVkyc() => completeStep(ScreenStatusFlags.vkyc);
 

@@ -9,7 +9,6 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../../core/widgets/funnel_scaffold.dart';
 import '../../../authentication/presentation/providers/auth_providers.dart';
-import '../../../dashboard/data/home_repository.dart';
 import '../../../device_sync/device_sync_service.dart';
 
 /// RN `scenes/locationPermission` — after credit score, before bank/college.
@@ -33,19 +32,9 @@ class _LocationPermissionScreenState
     if (userType.toLowerCase() == 'student') {
       context.go(AppRoutes.collegeDetails);
     } else {
-      var repeatLoan = false;
-      try {
-        final bundle = await ref.read(homeRepositoryProvider).fetchHomeBundle();
-        repeatLoan = bundle.home.topUpEligible && bundle.home.loanCompleted;
-      } catch (_) {
-        // The bank refresh remains safe if Home cannot be loaded.
-      }
-      if (!mounted) return;
-      // Skip manual Salary Account Details — AA (Finarkein) supplies bank info.
-      context.go(
-        repeatLoan ? AppRoutes.employerDetails : AppRoutes.finbit,
-        extra: repeatLoan ? const {'isFrom': 'repeatLoan'} : null,
-      );
+      // Employer details and salary slips are not collected in the app,
+      // including on a repeat loan. Finarkein supplies the bank statement.
+      context.go(AppRoutes.finbit);
     }
   }
 

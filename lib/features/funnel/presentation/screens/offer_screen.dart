@@ -170,6 +170,8 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
     return null;
   }
 
+  bool get _amountFixed => _maxAmount <= _minAmount;
+
   double get _processingFeeGst =>
       (_processingFee * _processingFeeGstRate * 100).roundToDouble() / 100;
 
@@ -285,7 +287,10 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
             data: {
               'offer_id': _offerId,
               'sf_app_record_id': null,
-              'loan_amount': _amount.round(),
+              'loan_amount': _amount
+                  .roundToDouble()
+                  .clamp(_minAmount, _maxAmount)
+                  .round(),
               'interest_rate': _interestRate,
               'term': _term,
               'customer_id': customerId,
@@ -426,21 +431,28 @@ class _OfferScreenState extends ConsumerState<OfferScreen> {
                     overlayColor: AppColors.accentMint.withValues(alpha: 0.2),
                   ),
                   child: Slider(
-                    value: _amount.clamp(_minAmount, _maxAmount),
+                    // Slider requires max > min. When the approved amount is
+                    // the whole range, keep the thumb fixed at that amount.
+                    value: _amountFixed
+                        ? _minAmount
+                        : _amount.clamp(_minAmount, _maxAmount),
                     min: _minAmount,
-                    max: _maxAmount <= _minAmount
-                        ? _minAmount + 1
-                        : _maxAmount,
-                    divisions: _maxAmount <= _minAmount
+                    max: _amountFixed ? _minAmount + 1 : _maxAmount,
+                    divisions: _amountFixed
                         ? 1
                         : ((_maxAmount - _minAmount) / 1000).round().clamp(
                             1,
                             100,
                           ),
-                    onChanged: (v) {
-                      setState(() => _amount = v);
-                    },
-                    onChangeEnd: (_) => _recalcEmi(),
+                    onChanged: _amountFixed
+                        ? null
+                        : (v) {
+                            final next = v
+                                .roundToDouble()
+                                .clamp(_minAmount, _maxAmount);
+                            setState(() => _amount = next);
+                          },
+                    onChangeEnd: _amountFixed ? null : (_) => _recalcEmi(),
                   ),
                 ),
                 Row(

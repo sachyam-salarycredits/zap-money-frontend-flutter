@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_routes.dart';
+import '../../../../core/services/screen_status_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../../core/widgets/funnel_scaffold.dart';
@@ -154,6 +155,9 @@ class _EmailVerificationScreenState extends ConsumerState<EmailVerificationScree
         }
         return;
       }
+      try {
+        await ref.read(screenStatusServiceProvider).completeEmailVerified();
+      } catch (_) {}
       final kycDone = bundle.flags.ocr || bundle.flags.vkyc;
       if (!kycDone) {
         context.go(AppRoutes.dkyc);

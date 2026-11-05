@@ -380,12 +380,7 @@ class _EmployerDetailsScreenState extends ConsumerState<EmployerDetailsScreen> {
           widget.isFrom == 'postResidence') {
         context.go(AppRoutes.waiting);
       } else if (widget.isFrom == 'repeatLoan') {
-        // A repeat application needs a newly uploaded income document before
-        // refreshing the salary-account statement.
-        context.go(
-          AppRoutes.profileSalary,
-          extra: const {'isRepeatLoan': true},
-        );
+        context.go(AppRoutes.finbit);
       } else if (widget.isFrom == 'editProfile') {
         context.go(AppRoutes.profile);
       } else {

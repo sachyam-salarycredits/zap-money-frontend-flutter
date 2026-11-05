@@ -132,16 +132,11 @@ class _ProfileEmployerScreenState extends ConsumerState<ProfileEmployerScreen> {
   Widget build(BuildContext context) {
     return FunnelScaffold(
       title: _isStudent ? 'College Details' : 'Employer Details',
-      bottom: _locked
+      bottom: _locked || !_isStudent
           ? null
           : ZapSubmitButton(
               title: 'Edit',
-              onPressed: () => context.push(
-                _isStudent
-                    ? AppRoutes.collegeDetails
-                    : AppRoutes.employerDetails,
-                extra: _isStudent ? null : {'isFrom': 'editProfile'},
-              ),
+              onPressed: () => context.push(AppRoutes.collegeDetails),
             ),
       child: _loading
           ? const Center(

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_routes.dart';
+import '../../../../core/services/screen_status_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../data/esign_repository.dart';
 import '../../data/references_repository.dart';
@@ -127,6 +128,7 @@ class _ReferencesScreenState extends ConsumerState<ReferencesScreen> {
             relation2: _relation2.text,
             mobile2: m2,
           );
+      await ref.read(screenStatusServiceProvider).completeReferences();
       if (!mounted) return;
       // After references, continue to e-sign when a signing link is available.
       try {

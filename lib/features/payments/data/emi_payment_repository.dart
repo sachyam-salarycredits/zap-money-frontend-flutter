@@ -62,7 +62,7 @@ class EmiPaymentRepository {
     }
 
     final payload = <String, dynamic>{
-      'amount': amount is double ? amount.round() : amount,
+      'amount': amount,
       'contractId': contractId,
       'cid': int.tryParse(customerId) ?? customerId,
       'purpose': purpose,

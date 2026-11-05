@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_routes.dart';
 import '../../../../core/services/screen_status_resolver.dart';
+import '../../../../core/services/screen_status_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/auth_widgets.dart';
 import '../../../payments/data/emi_payment_repository.dart';
@@ -15,6 +16,15 @@ import '../../../loans/data/esign_repository.dart';
 import '../../../loans/data/references_repository.dart';
 import '../../data/home_repository.dart';
 import '../../domain/home_snapshot.dart';
+
+String _formatRupees(num amount) {
+  final paise = (amount * 100).round() % 100 != 0;
+  return NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: paise ? 2 : 0,
+  ).format(amount);
+}
 
 class HomeDashboardScreen extends ConsumerStatefulWidget {
   const HomeDashboardScreen({super.key});
@@ -192,7 +202,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                         children: [
                           Expanded(
                             child: Text(
-                              'Pay EMI amount (${_currency.format(amount)})',
+                              'Pay EMI amount (${_formatRupees(amount)})',
                               style: AppTypography.body(size: 14),
                             ),
                           ),
@@ -345,6 +355,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
                 await ref
                     .read(homeRepositoryProvider)
                     .submitLoanAmountRequest(amount);
+                try {
+                  await ref
+                      .read(screenStatusServiceProvider)
+                      .completeAmountRequest();
+                } catch (_) {}
                 if (!sheetContext.mounted) return;
                 Navigator.of(sheetContext).pop();
                 if (!mounted) return;
@@ -873,7 +888,7 @@ class _LoanCard extends StatelessWidget {
                 if (home.installmentAmount != null)
                   _LoanFactRow(
                     label: 'EMI Amount',
-                    value: currency.format(home.installmentAmount),
+                    value: _formatRupees(home.installmentAmount!),
                   ),
               ],
             ),

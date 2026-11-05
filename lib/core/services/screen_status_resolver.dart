@@ -7,6 +7,7 @@ class ScreenCompletionFlags {
   const ScreenCompletionFlags({
     this.permission = false,
     this.personalInfo = false,
+    this.emailVerified = false,
     this.equifax = false,
     this.employerDetails = false,
     this.collegeDetails = false,
@@ -14,15 +15,18 @@ class ScreenCompletionFlags {
     this.bankDetailsVerified = false,
     this.finbit = false,
     this.addressSelection = false,
+    this.amountRequest = false,
     this.dc = false,
     this.pl = false,
     this.ocr = false,
     this.enach = false,
+    this.references = false,
     this.vkyc = false,
   });
 
   final bool permission;
   final bool personalInfo;
+  final bool emailVerified;
   final bool equifax;
   final bool employerDetails;
   final bool collegeDetails;
@@ -30,10 +34,12 @@ class ScreenCompletionFlags {
   final bool bankDetailsVerified;
   final bool finbit;
   final bool addressSelection;
+  final bool amountRequest;
   final bool dc;
   final bool pl;
   final bool ocr;
   final bool enach;
+  final bool references;
   final bool vkyc;
 
   factory ScreenCompletionFlags.fromScreenList(List<dynamic> screens) {
@@ -52,6 +58,8 @@ class ScreenCompletionFlags {
         return _copy(permission: true);
       case ScreenStatusFlags.personalInfo:
         return _copy(personalInfo: true);
+      case ScreenStatusFlags.emailVerified:
+        return _copy(emailVerified: true);
       case ScreenStatusFlags.equifax:
         return _copy(equifax: true);
       case ScreenStatusFlags.employerDetails:
@@ -66,6 +74,8 @@ class ScreenCompletionFlags {
         return _copy(finbit: true);
       case ScreenStatusFlags.addressSelection:
         return _copy(addressSelection: true);
+      case ScreenStatusFlags.amountRequest:
+        return _copy(amountRequest: true);
       case ScreenStatusFlags.dc:
         return _copy(dc: true);
       case ScreenStatusFlags.pl:
@@ -74,6 +84,8 @@ class ScreenCompletionFlags {
         return _copy(ocr: true);
       case ScreenStatusFlags.enach:
         return _copy(enach: true);
+      case ScreenStatusFlags.references:
+        return _copy(references: true);
       case ScreenStatusFlags.vkyc:
         return _copy(vkyc: true);
       default:
@@ -84,6 +96,7 @@ class ScreenCompletionFlags {
   ScreenCompletionFlags _copy({
     bool? permission,
     bool? personalInfo,
+    bool? emailVerified,
     bool? equifax,
     bool? employerDetails,
     bool? collegeDetails,
@@ -91,15 +104,18 @@ class ScreenCompletionFlags {
     bool? bankDetailsVerified,
     bool? finbit,
     bool? addressSelection,
+    bool? amountRequest,
     bool? dc,
     bool? pl,
     bool? ocr,
     bool? enach,
+    bool? references,
     bool? vkyc,
   }) {
     return ScreenCompletionFlags(
       permission: permission ?? this.permission,
       personalInfo: personalInfo ?? this.personalInfo,
+      emailVerified: emailVerified ?? this.emailVerified,
       equifax: equifax ?? this.equifax,
       employerDetails: employerDetails ?? this.employerDetails,
       collegeDetails: collegeDetails ?? this.collegeDetails,
@@ -107,10 +123,12 @@ class ScreenCompletionFlags {
       bankDetailsVerified: bankDetailsVerified ?? this.bankDetailsVerified,
       finbit: finbit ?? this.finbit,
       addressSelection: addressSelection ?? this.addressSelection,
+      amountRequest: amountRequest ?? this.amountRequest,
       dc: dc ?? this.dc,
       pl: pl ?? this.pl,
       ocr: ocr ?? this.ocr,
       enach: enach ?? this.enach,
+      references: references ?? this.references,
       vkyc: vkyc ?? this.vkyc,
     );
   }
@@ -130,11 +148,12 @@ class ScreenStatusResolver {
     bool kycComplete = false,
   }) {
     final kycDone = kycComplete || flags.ocr || flags.vkyc;
-    if (flags.enach) return AppRoutes.home;
+    if (flags.enach || flags.references) return AppRoutes.home;
     if (flags.pl || flags.dc) {
       if (kycDone) return AppRoutes.home;
       return AppRoutes.dkyc;
     }
+    if (flags.amountRequest && !(flags.pl || flags.dc)) return AppRoutes.home;
     if (flags.addressSelection) return AppRoutes.waiting;
     if (flags.finbit && flags.bankDetails) return AppRoutes.residenceAddress;
     // bankDetails is set only after Finarkein consent ACTIVE (not mid-OTP quit).
@@ -149,7 +168,10 @@ class ScreenStatusResolver {
       return AppRoutes.locationPermission;
     }
     // Email is verified right after Aadhaar/email are saved, before DigiLocker.
-    if (flags.personalInfo && !kycDone) return AppRoutes.emailVerification;
+    if (flags.personalInfo && !flags.emailVerified && !kycDone) {
+      return AppRoutes.emailVerification;
+    }
+    if (flags.personalInfo && !kycDone) return AppRoutes.dkyc;
     if (flags.personalInfo) return AppRoutes.equifax;
     if (flags.permission) return AppRoutes.profession;
     return AppRoutes.permission;
