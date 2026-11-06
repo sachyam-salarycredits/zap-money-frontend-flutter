@@ -44,6 +44,7 @@ class AppRoutes {
   static const profileAddress = '/profile/address';
   static const profileImageSelect = '/profile/photo';
   static const myLoans = '/my-loans';
+  static const loanInfo = '/loan-info';
   static const loanTransactions = '/loan-transactions';
 
   // Main app shell

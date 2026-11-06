@@ -555,7 +555,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen>
           currency: _currency,
           completed: kind == HomeCardKind.loanCompleted,
           onViewLoan: () =>
-              context.push(AppRoutes.myLoans, extra: home.contractId),
+              context.push(AppRoutes.loanInfo, extra: home.contractId),
           onPrePay: () => _showEmiPaymentSheet(home),
           // A repaid loan starts a fresh underwriting cycle. The backend has
           // invalidated bureau, income/bank and mandate steps; begin with a new

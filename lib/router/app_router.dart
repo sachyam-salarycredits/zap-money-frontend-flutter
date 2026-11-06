@@ -27,6 +27,7 @@ import '../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../features/payments/presentation/screens/enach_screen.dart';
 import '../features/payments/presentation/screens/enach_upi_screen.dart';
 import '../features/loans/presentation/screens/loan_details_screen.dart';
+import '../features/loans/presentation/screens/loan_info_screen.dart';
 import '../features/loans/presentation/screens/esign_screen.dart';
 import '../features/loans/presentation/screens/references_screen.dart';
 import '../features/profile/presentation/screens/profile_detail_screens.dart';
@@ -253,6 +254,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.myLoans,
         builder: (context, state) => MyLoansScreen(
+          contractId: state.extra is String ? state.extra as String? : null,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.loanInfo,
+        builder: (context, state) => LoanInfoScreen(
           contractId: state.extra is String ? state.extra as String? : null,
         ),
       ),
